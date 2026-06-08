@@ -1,0 +1,53 @@
+const {
+    SlashCommandBuilder,
+    PermissionFlagsBits
+} = require('discord.js');
+
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('add-role')
+        .setDescription('Add a role to a member.')
+        .addUserOption(option =>
+            option
+                .setName('user')
+                .setDescription('The member to give the role to')
+                .setRequired(true)
+        )
+        .addRoleOption(option =>
+            option
+                .setName('role')
+                .setDescription('The role to add')
+                .setRequired(true)
+        )
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
+
+    async execute(interaction) {
+        const user = interaction.options.getUser('user');
+        const role = interaction.options.getRole('role');
+
+        const member = await interaction.guild.members.fetch(user.id);
+
+        // Check if the member already has the role
+        if (member.roles.cache.has(role.id)) {
+            return interaction.reply({
+                content: `${user.tag} already has the ${role.name} role.`,
+                ephemeral: true
+            });
+        }
+
+        try {
+            await member.roles.add(role);
+
+            await interaction.reply({
+                content: `✅ Added **${role.name}** to ${user.tag}.`
+            });
+        } catch (error) {
+            console.error(error);
+
+            await interaction.reply({
+                content: '❌ Failed to add the role. Check the bot permissions and role hierarchy.',
+                ephemeral: true
+            });
+        }
+    }
+};
