@@ -18,7 +18,7 @@ async function getOrCreateWebhook(channel, client) {
     }
 }
 
-async function sendDerankLog(guild, client, { targetUser, role, issuer, reason, status, failReason = null }) {
+async function sendDerankLog(guild, client, { targetUser, role, issuer, authorisation, reason, status, failReason = null }) {
     try {
         const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
         if (!logChannel) return;
@@ -49,6 +49,10 @@ async function sendDerankLog(guild, client, { targetUser, role, issuer, reason, 
                     name: '🛡️ Issued By',
                     value: `${issuerName} → ${issuer.user.username}`,
                     inline: true
+                },
+                {
+                    name: '✅ Authorisation',
+                    value: authorisation || 'Not provided'
                 },
                 {
                     name: '📋 Reason',
@@ -99,6 +103,8 @@ export default {
         const issuer = interaction.member;
 
         const originalEmbed = interaction.message.embeds[0];
+        const authorisation = originalEmbed?.fields?.find(f => f.name.includes('Authorisation'))?.value
+            ?? 'Not provided';
         const reason = originalEmbed?.fields?.find(f => f.name.includes('Message'))?.value
             ?? 'No reason provided';
 
@@ -107,6 +113,7 @@ export default {
                 targetUser: { id: userId, username: userId },
                 role,
                 issuer,
+                authorisation,
                 reason,
                 status: 'FAILED',
                 failReason: 'User not found in server'
@@ -119,6 +126,7 @@ export default {
                 targetUser: member.user,
                 role: null,
                 issuer,
+                authorisation,
                 reason,
                 status: 'FAILED',
                 failReason: 'Role not found'
@@ -131,6 +139,7 @@ export default {
                 targetUser: member.user,
                 role,
                 issuer,
+                authorisation,
                 reason,
                 status: 'FAILED',
                 failReason: 'Issuer lacks Manage Roles permission'
@@ -145,6 +154,7 @@ export default {
                 targetUser: member.user,
                 role,
                 issuer,
+                authorisation,
                 reason,
                 status: 'SUCCESS'
             });
@@ -159,6 +169,7 @@ export default {
                 targetUser: member.user,
                 role,
                 issuer,
+                authorisation,
                 reason,
                 status: 'FAILED',
                 failReason: error.message ?? 'Bot role may be below the target role'
