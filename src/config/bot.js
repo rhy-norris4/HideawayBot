@@ -12,7 +12,7 @@ export const botConfig = {
   // - "invisible" = appears offline
   presence: {
     // Current online state shown on Discord.
-    status: "online",
+    status: "dnd",
 
     // Activity lines shown under the bot name.
     // `type` number mapping from Discord:
@@ -25,7 +25,7 @@ export const botConfig = {
     activities: [
       {
         // Text users will see (example: "Playing /help | Titan Bot").
-        name: "I guess Rhy finally done something with his life :smile:",
+        name: "Hideaway Community Bot",
         // Activity type number (0 = Eating).
         type: 0, 
       },
@@ -421,12 +421,11 @@ export const botConfig = {
   // GENERIC BOT MESSAGES
   // =========================
   messages: {
-    noPermission: "You do not have permission to use this command.",
-    cooldownActive: "Please wait {time} before using this command again.",
-    errorOccurred: "An error occurred while executing this command.",
-    missingPermissions:
-      "I am missing required permissions to perform this action.",
-    commandDisabled: "This command has been disabled.",
+    noPermission: "You are too low rank to be utilising this command.",
+    cooldownActive: "Please wait {time} before trying to use this command again.",
+    errorOccurred: "Something odd happened while trying to run this command. Let someone with the <@&1511500091544961045> role about the issue.",
+    missingPermissions: "I am missing some permissions to executive this action.",
+    commandDisabled: "This command has been disabled by a Server Developer.",
     maintenanceMode: "The bot is currently in maintenance mode.",
   },
 
