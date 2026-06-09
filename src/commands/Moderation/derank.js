@@ -19,6 +19,11 @@ export default {
              .setRequired(true)
         )
         .addStringOption(o =>
+            o.setName('authorisation')
+             .setDescription('Authorisation reference or note for this demotion')
+             .setRequired(true)
+        )
+        .addStringOption(o =>
             o.setName('reason')
              .setDescription('Reason / message shown on the panel')
              .setRequired(false)
@@ -36,6 +41,7 @@ export default {
             }
 
             const target = interaction.options.getUser('user');
+            const authorisation = interaction.options.getString('authorisation');
             const reason = interaction.options.getString('reason') || "Removing the user's rank by selecting a role below";
 
             const embed = new EmbedBuilder()
@@ -52,6 +58,10 @@ export default {
                     {
                         name: '🛡️ Authorised By',
                         value: `${interaction.member.displayName} (${interaction.user.username})`
+                    },
+                    {
+                        name: '✅ Authorisation',
+                        value: authorisation
                     },
                     {
                         name: '📋 Message',
