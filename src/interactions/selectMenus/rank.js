@@ -3,19 +3,34 @@ import { logger } from '../../utils/logger.js';
 
 const LOG_CHANNEL_ID = '1513670232911122482';
 
-async function sendRankLog(guild, { targetMember, targetUser, role, issuer, reason, status, failReason = null }) {
+async function getOrCreateWebhook(channel, client) {
+    try {
+        const webhooks = await channel.fetchWebhooks();
+        const existing = webhooks.find(wh => wh.owner?.id === client.user.id);
+        if (existing) return existing;
+        return await channel.createWebhook({
+            name: 'Rank Logs',
+            avatar: client.user.displayAvatarURL()
+        });
+    } catch (err) {
+        logger.warn(`Could not fetch/create webhook: ${err.message}`);
+        return null;
+    }
+}
+
+async function sendRankLog(guild, client, { targetUser, role, issuer, reason, status, failReason = null }) {
     try {
         const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
         if (!logChannel) return;
 
-        const issuerHighestRole = issuer.roles?.highest?.name ?? 'Unknown';
+        const issuerName = issuer.displayName ?? issuer.user.username;
+        const issuerTopRole = issuer.roles?.highest?.name ?? 'Unknown';
+        const userName = targetUser?.username ?? 'Unknown';
+        const userId = targetUser?.id ?? 'Unknown';
 
         const statusText = status === 'SUCCESS'
             ? '✅ SUCCESS'
             : `❌ FAILED — ${failReason ?? 'Unknown error'}`;
-
-        const userName = targetUser?.username ?? targetMember?.user?.username ?? 'Unknown';
-        const userId = targetUser?.id ?? targetMember?.id ?? 'Unknown';
 
         const embed = new EmbedBuilder()
             .setTitle('Rank Changed')
@@ -23,17 +38,17 @@ async function sendRankLog(guild, { targetMember, targetUser, role, issuer, reas
             .addFields(
                 {
                     name: '👤 User',
-                    value: `${userName}\n${userId}`,
+                    value: `${userName}\n\`${userId}\``,
                     inline: true
                 },
                 {
                     name: '🎖️ Role Added',
-                    value: role ? `${role.toString()}\n${role.name}` : 'Unknown',
+                    value: role ? role.name : 'Unknown',
                     inline: true
                 },
                 {
                     name: '🛡️ Issued By',
-                    value: `${issuer.user.tag}\n${issuerHighestRole}`,
+                    value: `${issuerName}\n${issuerTopRole}`,
                     inline: true
                 },
                 {
@@ -47,7 +62,16 @@ async function sendRankLog(guild, { targetMember, targetUser, role, issuer, reas
             )
             .setTimestamp();
 
-        await logChannel.send({ embeds: [embed] });
+        const webhook = await getOrCreateWebhook(logChannel, client);
+        if (webhook) {
+            await webhook.send({
+                username: 'Rank Logs',
+                avatarURL: client.user.displayAvatarURL(),
+                embeds: [embed]
+            });
+        } else {
+            await logChannel.send({ embeds: [embed] });
+        }
     } catch (err) {
         logger.warn(`Failed to send rank log: ${err.message}`);
     }
@@ -71,7 +95,7 @@ export default {
             ?? 'No reason provided';
 
         if (!member) {
-            await sendRankLog(guild, {
+            await sendRankLog(guild, client, {
                 targetUser: { id: userId, username: userId },
                 role,
                 issuer,
@@ -83,8 +107,7 @@ export default {
         }
 
         if (!role) {
-            await sendRankLog(guild, {
-                targetMember: member,
+            await sendRankLog(guild, client, {
                 targetUser: member.user,
                 role: null,
                 issuer,
@@ -96,8 +119,7 @@ export default {
         }
 
         if (!issuer.permissions.has(PermissionFlagsBits.ManageRoles)) {
-            await sendRankLog(guild, {
-                targetMember: member,
+            await sendRankLog(guild, client, {
                 targetUser: member.user,
                 role,
                 issuer,
@@ -111,8 +133,7 @@ export default {
         try {
             await member.roles.add(role, `Rank set by ${interaction.user.tag}`);
 
-            await sendRankLog(guild, {
-                targetMember: member,
+            await sendRankLog(guild, client, {
                 targetUser: member.user,
                 role,
                 issuer,
@@ -129,8 +150,7 @@ export default {
         } catch (error) {
             logger.error('Rank select error:', error);
 
-            await sendRankLog(guild, {
-                targetMember: member,
+            await sendRankLog(guild, client, {
                 targetUser: member.user,
                 role,
                 issuer,
