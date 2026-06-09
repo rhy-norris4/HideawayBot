@@ -77,6 +77,13 @@ async function sendRankLog(guild, client, { targetUser, role, issuer, reason, st
     }
 }
 
+function noticeEmbed(success, userStr, roleStr) {
+    const word = success ? 'successfully' : 'unsuccessfully';
+    return new EmbedBuilder()
+        .setColor(success ? 0x57F287 : 0xED4245)
+        .setDescription(`${userStr} has ${word} been issued ${roleStr}`);
+}
+
 export default {
     name: 'rank_role_select',
     async execute(interaction, client, args) {
@@ -103,7 +110,7 @@ export default {
                 status: 'FAILED',
                 failReason: 'User not found in server'
             });
-            return interaction.followUp({ content: '❌ Could not find that user in this server.', ephemeral: true });
+            return interaction.followUp({ embeds: [noticeEmbed(false, `<@${userId}>`, role ? role.toString() : 'Unknown Role')], ephemeral: true });
         }
 
         if (!role) {
@@ -115,7 +122,7 @@ export default {
                 status: 'FAILED',
                 failReason: 'Role not found'
             });
-            return interaction.followUp({ content: '❌ Could not find that role.', ephemeral: true });
+            return interaction.followUp({ embeds: [noticeEmbed(false, member.toString(), 'Unknown Role')], ephemeral: true });
         }
 
         if (!issuer.permissions.has(PermissionFlagsBits.ManageRoles)) {
@@ -127,7 +134,7 @@ export default {
                 status: 'FAILED',
                 failReason: 'Issuer lacks Manage Roles permission'
             });
-            return interaction.followUp({ content: '❌ You do not have permission to manage roles.', ephemeral: true });
+            return interaction.followUp({ embeds: [noticeEmbed(false, member.toString(), role.toString())], ephemeral: true });
         }
 
         try {
@@ -143,10 +150,7 @@ export default {
 
             await interaction.editReply({ embeds: [originalEmbed], components: [] });
 
-            await interaction.followUp({
-                content: `${member.toString()} has been issued ${role.toString()}`,
-                ephemeral: true
-            });
+            await interaction.followUp({ embeds: [noticeEmbed(true, member.toString(), role.toString())], ephemeral: true });
         } catch (error) {
             logger.error('Rank select error:', error);
 
@@ -159,10 +163,7 @@ export default {
                 failReason: error.message ?? 'Bot role may be below the target role'
             });
 
-            await interaction.followUp({
-                content: '❌ Failed to assign role. Make sure my role is above the target role.',
-                ephemeral: true
-            });
+            await interaction.followUp({ embeds: [noticeEmbed(false, member.toString(), role.toString())], ephemeral: true });
         }
     }
 };
