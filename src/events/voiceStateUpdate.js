@@ -1,7 +1,7 @@
 import { ChannelType, PermissionFlagsBits } from 'discord.js';
 import {
-    getJoinToCreateConfig, 
-    registerTemporaryChannel, 
+    getJoinToCreateConfig,
+    registerTemporaryChannel,
     unregisterTemporaryChannel,
     getTemporaryChannelInfo,
     formatChannelName
@@ -22,18 +22,18 @@ const MAX_TRACKED_COOLDOWNS = 10000;
 export default {
     name: 'voiceStateUpdate',
     async execute(oldState, newState, client) {
-        if (newState.member.user.bot) return;
-
         const guildId = newState.guild.id;
         const userId = newState.member.id;
         const member = newState.member;
+        const isBot = member.user.bot;
         const cooldownKey = `${guildId}-${userId}`;
         cleanupCooldownEntries();
 
-        // Generic voice join/leave/move logging
+        // Voice join/leave/move logging — runs for ALL users including bots
         try {
             const now = Math.floor(Date.now() / 1000);
             const userMention = member.toString();
+            const botTag = isBot ? ' 🤖' : '';
 
             if (!oldState.channel && newState.channel) {
                 await logEvent({
@@ -41,11 +41,11 @@ export default {
                     guildId,
                     eventType: 'voice.join',
                     data: {
-                        title: 'Voice Joined',
+                        title: `Voice Joined${botTag}`,
                         description: [
                             `User: ${userMention} — ${userId}`,
-                            `<t:${now}:F>`,
-                            `${userMention} has joined ${newState.channel.toString()}`
+                            `Channel: ${newState.channel.toString()}`,
+                            `<t:${now}:F>`
                         ].join('\n'),
                         userId
                     }
@@ -56,11 +56,11 @@ export default {
                     guildId,
                     eventType: 'voice.leave',
                     data: {
-                        title: 'Voice Left',
+                        title: `Voice Left${botTag}`,
                         description: [
                             `User: ${userMention} — ${userId}`,
-                            `<t:${now}:F>`,
-                            `${userMention} has left ${oldState.channel.toString()}`
+                            `Channel: ${oldState.channel.toString()}`,
+                            `<t:${now}:F>`
                         ].join('\n'),
                         userId
                     }
@@ -71,11 +71,11 @@ export default {
                     guildId,
                     eventType: 'voice.move',
                     data: {
-                        title: 'Voice Moved',
+                        title: `Voice Moved${botTag}`,
                         description: [
                             `User: ${userMention} — ${userId}`,
-                            `<t:${now}:F>`,
-                            `${userMention} has moved from ${oldState.channel.toString()} to ${newState.channel.toString()}`
+                            `From: ${oldState.channel.toString()} → ${newState.channel.toString()}`,
+                            `<t:${now}:F>`
                         ].join('\n'),
                         userId
                     }
@@ -84,6 +84,9 @@ export default {
         } catch (voiceLogError) {
             logger.warn('Failed to log voice event:', voiceLogError);
         }
+
+        // JoinToCreate logic — skip bots
+        if (isBot) return;
 
         try {
             const config = await getJoinToCreateConfig(client, guildId);
@@ -118,7 +121,7 @@ export default {
             const now = Date.now();
             if (channelCreationCooldown.has(cooldownKey)) {
                 const lastCreation = channelCreationCooldown.get(cooldownKey);
-if (now - lastCreation < VOICE_CREATE_COOLDOWN_MS) {
+                if (now - lastCreation < VOICE_CREATE_COOLDOWN_MS) {
                     logger.warn(`User ${member.id} is on cooldown for channel creation`);
                     return;
                 }
@@ -157,7 +160,7 @@ if (now - lastCreation < VOICE_CREATE_COOLDOWN_MS) {
             const { channel, member } = state;
 
             const tempChannelInfo = await getTemporaryChannelInfo(client, state.guild.id, channel.id);
-            
+
             if (!tempChannelInfo) {
                 return;
             }
@@ -175,7 +178,7 @@ if (now - lastCreation < VOICE_CREATE_COOLDOWN_MS) {
         async function handleVoiceMove(client, oldState, newState, config) {
             if (oldState.channel) {
                 const tempChannelInfo = await getTemporaryChannelInfo(client, oldState.guild.id, oldState.channel.id);
-                
+
                 if (tempChannelInfo) {
                     if (oldState.channel.members.size === 0) {
                         await deleteTemporaryChannel(client, oldState.channel, oldState.guild.id);
@@ -188,7 +191,7 @@ if (now - lastCreation < VOICE_CREATE_COOLDOWN_MS) {
                 }
             }
 
-            if (config.triggerChannels.includes(newState.channel.id) && 
+            if (config.triggerChannels.includes(newState.channel.id) &&
                 !config.triggerChannels.includes(oldState.channel?.id)) {
                 await handleVoiceJoin(client, newState, config);
             }
@@ -214,7 +217,7 @@ if (now - lastCreation < VOICE_CREATE_COOLDOWN_MS) {
 
                 const channelOptions = config.channelOptions?.[triggerChannel.id] || {};
                 const nameTemplate = channelOptions.nameTemplate || config.channelNameTemplate || "{username}'s Room";
-                
+
                 let userLimit = channelOptions.userLimit ?? config.userLimit ?? 0;
                 const bitrate = clampVoiceBitrate(channelOptions.bitrate ?? config.bitrate ?? DEFAULT_VOICE_BITRATE);
 
@@ -253,9 +256,9 @@ if (now - lastCreation < VOICE_CREATE_COOLDOWN_MS) {
 
                 const tempChannel = await guild.channels.create({
                     name: channelName,
-type: ChannelType.GuildVoice,
+                    type: ChannelType.GuildVoice,
                     parent: triggerChannel.parentId,
-userLimit: userLimit === 0 ? undefined : userLimit,
+                    userLimit: userLimit === 0 ? undefined : userLimit,
                     bitrate: bitrate,
                     permissionOverwrites: [
                         {
@@ -281,9 +284,9 @@ userLimit: userLimit === 0 ? undefined : userLimit,
 
             } catch (error) {
                 logger.error(`Failed to create temporary channel for user ${member.user.tag} in guild ${guild.name}:`, error);
-                
+
                 channelCreationCooldown.delete(cooldownKey);
-                
+
                 try {
                     await member.send({
                         content: `❌ Failed to create your temporary voice channel. Please contact a server administrator.`
@@ -297,11 +300,8 @@ userLimit: userLimit === 0 ? undefined : userLimit,
         async function deleteTemporaryChannel(client, channel, guildId) {
             try {
                 await unregisterTemporaryChannel(client, guildId, channel.id);
-
                 await channel.delete('Temporary voice channel - empty');
-
                 logger.info(`Deleted temporary voice channel ${channel.name} (${channel.id}) in guild ${channel.guild.name}`);
-
             } catch (error) {
                 logger.error(`Failed to delete temporary channel ${channel.id}:`, error);
             }
@@ -311,7 +311,7 @@ userLimit: userLimit === 0 ? undefined : userLimit,
             try {
                 const config = await getJoinToCreateConfig(client, guildId);
                 const tempChannelInfo = config.temporaryChannels[channel.id];
-                
+
                 if (!tempChannelInfo) return;
 
                 config.temporaryChannels[channel.id].ownerId = newOwnerId;
@@ -321,7 +321,7 @@ userLimit: userLimit === 0 ? undefined : userLimit,
                 if (newOwner) {
                     const channelOptions = config.channelOptions?.[tempChannelInfo.triggerChannelId] || {};
                     const nameTemplate = channelOptions.nameTemplate || config.channelNameTemplate;
-                    
+
                     const newChannelName = sanitizeVoiceChannelName(formatChannelName(nameTemplate, {
                         username: newOwner.user.username,
                         userTag: newOwner.user.tag,
@@ -353,10 +353,7 @@ function sanitizeVoiceChannelName(inputName) {
 
 function clampVoiceBitrate(value) {
     const parsed = Number(value);
-    if (!Number.isFinite(parsed)) {
-        return DEFAULT_VOICE_BITRATE;
-    }
-
+    if (!Number.isFinite(parsed)) return DEFAULT_VOICE_BITRATE;
     return Math.max(MIN_VOICE_BITRATE, Math.min(MAX_VOICE_BITRATE, Math.floor(parsed)));
 }
 
@@ -370,16 +367,10 @@ function cleanupCooldownEntries() {
 }
 
 function trimCooldownMapIfNeeded() {
-    if (channelCreationCooldown.size <= MAX_TRACKED_COOLDOWNS) {
-        return;
-    }
-
+    if (channelCreationCooldown.size <= MAX_TRACKED_COOLDOWNS) return;
     const entries = [...channelCreationCooldown.entries()].sort((a, b) => a[1] - b[1]);
     const removeCount = channelCreationCooldown.size - MAX_TRACKED_COOLDOWNS;
     for (let index = 0; index < removeCount; index += 1) {
         channelCreationCooldown.delete(entries[index][0]);
     }
 }
-
-
-

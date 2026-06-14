@@ -307,11 +307,36 @@ class TitanBot extends Client {
     }
   }
 
+  async sendOfflineNotice() {
+    try {
+      const OFFLINE_NOTICE_CHANNEL = '1515733941124993104';
+      const STAFF_ROLE = '1513318632871170068';
+      const PING_ROLE = '1515735068012974164';
+      const offlineAt = Math.floor((Date.now() + 10 * 60 * 1000) / 1000);
+
+      for (const [, guild] of this.guilds.cache) {
+        const channel = guild.channels.cache.get(OFFLINE_NOTICE_CHANNEL)
+          || await guild.channels.fetch(OFFLINE_NOTICE_CHANNEL).catch(() => null);
+        if (channel?.isTextBased?.()) {
+          await channel.send(
+            `<@&${STAFF_ROLE}> is going offline <t:${offlineAt}:R>\n<@&${PING_ROLE}>`
+          ).catch(() => {});
+        }
+      }
+    } catch (err) {
+      logger.warn('Failed to send offline notice:', err.message);
+    }
+  }
+
   async shutdown(reason = 'UNKNOWN') {
     shutdownLog(`Bot is shutting down (${reason})...`);
     logger.info(`\n${'='.repeat(60)}`);
     logger.info(`🛑 Graceful Shutdown Initiated (${reason})`);
     logger.info(`${'='.repeat(60)}`);
+
+    if (this.isReady()) {
+      await this.sendOfflineNotice();
+    }
 
     try {
       

@@ -2,12 +2,35 @@ import {
     SlashCommandBuilder,
     PermissionFlagsBits,
     ActionRowBuilder,
-    RoleSelectMenuBuilder,
+    StringSelectMenuBuilder,
     EmbedBuilder
 } from 'discord.js';
 import { logger } from '../../utils/logger.js';
 import { handleInteractionError } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+
+export const ALL_MANAGED_RANK_IDS = [
+    '1511500077137399928',
+    '1511500080031469790',
+    '1511500082053120020',
+    '1511500082753830992',
+    '1511500083407884338',
+    '1511500092404666459',
+    '1511500090165039264',
+];
+
+export const RANK_HIERARCHY = [
+    '1511500077137399928',
+    '1511500080031469790',
+    '1511500082053120020',
+    '1511500082753830992',
+    '1511500083407884338',
+];
+
+export const EXEMPT_RANKS = [
+    '1511500092404666459',
+    '1511500090165039264',
+];
 
 export default {
     data: new SlashCommandBuilder()
@@ -38,30 +61,31 @@ export default {
             const target = interaction.options.getUser('user');
             const reason = interaction.options.getString('reason') || "Reason was not inputted. Consult the Issuing Moderator for further details.";
 
+            const roleOptions = ALL_MANAGED_RANK_IDS
+                .map(id => {
+                    const role = interaction.guild.roles.cache.get(id);
+                    return role ? { label: role.name, value: id } : null;
+                })
+                .filter(Boolean);
+
+            if (roleOptions.length === 0) {
+                throw new Error("Could not find any of the managed rank roles in this server.");
+            }
+
             const embed = new EmbedBuilder()
                 .setColor(0x062F77)
                 .addFields(
-                    {
-                        name: '👤 User',
-                        value: `${target.toString()} (${target.id})`
-                    },
-                    {
-                        name: '🌐 Group',
-                        value: interaction.guild.name
-                    },
-                    {
-                        name: '📋 Message',
-                        value: reason
-                    }
+                    { name: '👤 User', value: `${target.toString()} (${target.id})` },
+                    { name: '🌐 Group', value: interaction.guild.name },
+                    { name: '📋 Message', value: reason }
                 );
 
-            const roleSelect = new RoleSelectMenuBuilder()
+            const selectMenu = new StringSelectMenuBuilder()
                 .setCustomId(`rank_role_select:${target.id}`)
-                .setPlaceholder('Select a role to assign...')
-                .setMinValues(1)
-                .setMaxValues(1);
+                .setPlaceholder('Select a rank to assign...')
+                .addOptions(roleOptions);
 
-            const row = new ActionRowBuilder().addComponents(roleSelect);
+            const row = new ActionRowBuilder().addComponents(selectMenu);
 
             await InteractionHelper.safeEditReply(interaction, {
                 embeds: [embed],

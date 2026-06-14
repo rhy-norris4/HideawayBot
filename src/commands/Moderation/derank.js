@@ -2,12 +2,13 @@ import {
     SlashCommandBuilder,
     PermissionFlagsBits,
     ActionRowBuilder,
-    RoleSelectMenuBuilder,
+    StringSelectMenuBuilder,
     EmbedBuilder
 } from 'discord.js';
 import { logger } from '../../utils/logger.js';
 import { handleInteractionError } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { ALL_MANAGED_RANK_IDS } from './rank.js';
 
 export default {
     data: new SlashCommandBuilder()
@@ -44,38 +45,33 @@ export default {
             const authorisation = interaction.options.getString('authorisation');
             const reason = interaction.options.getString('reason') || "Reason was not inputted. Consult the Issuing Moderator for further details.";
 
+            const roleOptions = ALL_MANAGED_RANK_IDS
+                .map(id => {
+                    const role = interaction.guild.roles.cache.get(id);
+                    return role ? { label: role.name, value: id } : null;
+                })
+                .filter(Boolean);
+
+            if (roleOptions.length === 0) {
+                throw new Error("Could not find any of the managed rank roles in this server.");
+            }
+
             const embed = new EmbedBuilder()
                 .setColor(0xFEE75C)
                 .addFields(
-                    {
-                        name: '👤 User',
-                        value: `${target.toString()} (${target.id})`
-                    },
-                    {
-                        name: '🌐 Group',
-                        value: interaction.guild.name
-                    },
-                    {
-                        name: '🛡️ Authorised By',
-                        value: `${interaction.member.displayName} (${interaction.user.username})`
-                    },
-                    {
-                        name: '✅ Authorisation',
-                        value: authorisation
-                    },
-                    {
-                        name: '📋 Message',
-                        value: reason
-                    }
+                    { name: '👤 User', value: `${target.toString()} (${target.id})` },
+                    { name: '🌐 Group', value: interaction.guild.name },
+                    { name: '🛡️ Authorised By', value: `${interaction.member.displayName} (${interaction.user.username})` },
+                    { name: '✅ Authorisation', value: authorisation },
+                    { name: '📋 Message', value: reason }
                 );
 
-            const roleSelect = new RoleSelectMenuBuilder()
+            const selectMenu = new StringSelectMenuBuilder()
                 .setCustomId(`derank_role_select:${target.id}`)
-                .setPlaceholder('Select a role to remove...')
-                .setMinValues(1)
-                .setMaxValues(1);
+                .setPlaceholder('Select a rank to remove...')
+                .addOptions(roleOptions);
 
-            const row = new ActionRowBuilder().addComponents(roleSelect);
+            const row = new ActionRowBuilder().addComponents(selectMenu);
 
             await InteractionHelper.safeEditReply(interaction, {
                 embeds: [embed],

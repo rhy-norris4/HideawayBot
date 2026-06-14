@@ -5,22 +5,6 @@ import { getColor } from '../config/bot.js';
 
 const MOD_LOG_CHANNEL_ID = '1514063528603160666';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 const SANCTION_MAP = {
   'Member Banned': 'Ban',
   'Member Kicked': 'Kick',
@@ -61,7 +45,9 @@ export async function logEvent({ client, guild, guildId, event }) {
     const now = Math.floor(Date.now() / 1000);
 
     let expiry = 'Permanent / N/A';
-    if (event.metadata?.timeoutEnds) {
+    if (event.metadata?.expiryDate) {
+      expiry = event.metadata.expiryDate;
+    } else if (event.metadata?.timeoutEnds) {
       const expiryTs = Math.floor(new Date(event.metadata.timeoutEnds).getTime() / 1000);
       expiry = `<t:${expiryTs}:F>`;
     }
@@ -90,12 +76,6 @@ export async function logEvent({ client, guild, guildId, event }) {
   }
 }
 
-
-
-
-
-
-
 export async function generateCaseId(client, guildId) {
   try {
     const caseKey = `moderation_cases_${guildId}`;
@@ -105,18 +85,10 @@ export async function generateCaseId(client, guildId) {
     return nextCase;
   } catch (error) {
     logger.error("Error generating case ID:", error);
-return Date.now();
+    return Date.now();
   }
 }
 
-/**
- * Store moderation case in database for audit trail
- * @param {Object} options - The case options
- * @param {string} options.guildId - The guild ID
- * @param {number} options.caseId - The case ID
- * @param {Object} options.caseData - The case data
- * @returns {Promise<boolean>} Success status
- */
 export async function storeModerationCase({ guildId, caseId, caseData }) {
   try {
     const caseKey = `moderation_case_${guildId}_${caseId}`;
@@ -125,17 +97,17 @@ export async function storeModerationCase({ guildId, caseId, caseData }) {
       createdAt: new Date().toISOString(),
       caseId
     };
-    
+
     await setInDb(caseKey, caseDataWithTimestamp);
-    
+
     const caseListKey = `moderation_cases_list_${guildId}`;
     const caseList = await getFromDb(caseListKey, []);
     caseList.push(caseDataWithTimestamp);
-    
+
     if (caseList.length > 1000) {
       caseList.splice(0, caseList.length - 1000);
     }
-    
+
     await setInDb(caseListKey, caseList);
     return true;
   } catch (error) {
@@ -144,37 +116,26 @@ export async function storeModerationCase({ guildId, caseId, caseData }) {
   }
 }
 
-
-
-
-
-
-
 export async function getModerationCases(guildId, filters = {}) {
   try {
     const { userId, moderatorId, action, limit = 50, offset = 0 } = filters;
-    
-    const allCases = [];
-    
+
     const caseListKey = `moderation_cases_list_${guildId}`;
     const caseList = await getFromDb(caseListKey, []);
-    
+
     let filteredCases = caseList;
-    
+
     if (userId) {
-      filteredCases = filteredCases.filter(case_ => case_.targetUserId === userId);
+      filteredCases = filteredCases.filter(c => c.targetUserId === userId);
     }
-    
     if (moderatorId) {
-      filteredCases = filteredCases.filter(case_ => case_.moderatorId === moderatorId);
+      filteredCases = filteredCases.filter(c => c.moderatorId === moderatorId);
     }
-    
     if (action) {
-      filteredCases = filteredCases.filter(case_ => case_.action === action);
+      filteredCases = filteredCases.filter(c => c.action === action);
     }
-    
+
     filteredCases.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    
     return filteredCases.slice(offset, offset + limit);
   } catch (error) {
     logger.error("Error getting moderation cases:", error);
@@ -182,14 +143,9 @@ export async function getModerationCases(guildId, filters = {}) {
   }
 }
 
-/**
- * Enhanced logging function that stores case in database
- * @param {Object} options - The log options
- * @returns {Promise<number>} The generated case ID
- */
 export async function logModerationAction({ client, guild, event }) {
   const caseId = await generateCaseId(client, guild.id);
-  
+
   await storeModerationCase({
     guildId: guild.id,
     caseId,
@@ -204,7 +160,7 @@ export async function logModerationAction({ client, guild, event }) {
       moderatorId: event.metadata?.moderatorId
     }
   });
-  
+
   await logEvent({
     client,
     guild,
@@ -213,9 +169,6 @@ export async function logModerationAction({ client, guild, event }) {
       caseId
     }
   });
-  
+
   return caseId;
 }
-
-
-
