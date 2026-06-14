@@ -1,6 +1,6 @@
 import { Events, MessageFlags } from 'discord.js';
 import { logger } from '../utils/logger.js';
-import { hasModPermission } from '../utils/modPermCheck.js';
+import { checkModPermission } from '../utils/modPermCheck.js';
 import { getGuildConfig } from '../services/guildConfig.js';
 import { handleApplicationModal } from '../commands/Community/apply.js';
 import { handleApplicationReviewModal } from '../commands/Community/app-admin.js';
@@ -89,11 +89,12 @@ export default {
               }
             }
 
-            if (command.category === 'moderation' && interaction.member && !hasModPermission(interaction.member)) {
-              return interaction.reply({
-                content: '❌ You do not have the required role to use moderation commands.',
-                flags: MessageFlags.Ephemeral
-              });
+            if (command.category === 'moderation' && interaction.member) {
+              const subcommand = interaction.options?.getSubcommand?.(false) ?? null;
+              const permResult = checkModPermission(interaction.member, interaction.commandName, subcommand);
+              if (!permResult.allowed) {
+                return interaction.reply({ content: permResult.message, flags: MessageFlags.Ephemeral });
+              }
             }
 
             await command.execute(interaction, guildConfig, client);

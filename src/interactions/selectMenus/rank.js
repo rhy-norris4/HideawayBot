@@ -17,7 +17,7 @@ async function getOrCreateWebhook(channel, client) {
     }
 }
 
-async function sendRankLog(guild, client, { targetUser, role, removedRoles, issuer, reason, status, failReason = null }) {
+async function sendRankLog(guild, client, { targetUser, role, removedRoles, issuer, reason, authorisation, action, status, failReason = null }) {
     try {
         const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
         if (!logChannel) return;
@@ -26,16 +26,18 @@ async function sendRankLog(guild, client, { targetUser, role, removedRoles, issu
         const userName = targetUser?.username ?? 'Unknown';
         const userId = targetUser?.id ?? 'Unknown';
         const statusText = status === 'SUCCESS' ? '✅ SUCCESS' : `❌ FAILED — ${failReason ?? 'Unknown error'}`;
+        const isAdd = action === 'add';
 
         const embed = new EmbedBuilder()
-            .setTitle('Rank Changed')
-            .setColor(status === 'SUCCESS' ? 0x57F287 : 0xED4245)
+            .setTitle(isAdd ? 'Rank Changed — Addition' : '🔴 Rank Changed — Removal')
+            .setColor(isAdd ? 0x57F287 : 0xFEE75C)
             .addFields(
-                { name: '👤 User\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003', value: `${userName}\n\`${userId}\``, inline: true },
-                { name: '🎖️ Role Added\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003', value: role ? role.name : 'Unknown', inline: true },
+                { name: '👤 User', value: `${userName}\n\`${userId}\``, inline: true },
+                { name: isAdd ? '🎖️ Role Added' : '🎖️ Role Removed', value: role ? role.name : 'Unknown', inline: true },
                 { name: '🛡️ Issued By', value: `${issuerName} → ${issuer.user.username}`, inline: true },
+                ...(isAdd && removedRoles?.length ? [{ name: '🗑️ Roles Removed', value: removedRoles.map(r => r.name).join(', ') }] : []),
+                ...(!isAdd && authorisation ? [{ name: '✅ Authorisation', value: authorisation }] : []),
                 { name: '📋 Reason', value: reason || 'No reason provided' },
-                { name: '🗑️ Roles Removed', value: removedRoles?.length ? removedRoles.map(r => r.name).join(', ') : 'None' },
                 { name: '📊 Status', value: statusText }
             )
             .setTimestamp();
@@ -51,10 +53,13 @@ async function sendRankLog(guild, client, { targetUser, role, removedRoles, issu
     }
 }
 
-function noticeEmbed(success, userStr, roleStr) {
+function noticeEmbed(success, userStr, roleStr, action) {
+    const verb = action === 'add'
+        ? (success ? 'successfully been issued' : 'unsuccessfully been issued')
+        : (success ? 'successfully been removed from' : 'unsuccessfully been removed from');
     return new EmbedBuilder()
         .setColor(success ? 0x57F287 : 0xED4245)
-        .setDescription(`${userStr} has ${success ? 'successfully' : 'unsuccessfully'} been issued ${roleStr}`);
+        .setDescription(`${userStr} has ${verb} ${roleStr}`);
 }
 
 export default {
@@ -64,6 +69,7 @@ export default {
 
         const guild = interaction.guild;
         const userId = args[0];
+        const action = args[1] || 'add';
         const roleId = interaction.values[0];
 
         if (!ALL_MANAGED_RANK_IDS.includes(roleId)) {
@@ -77,53 +83,72 @@ export default {
         const originalEmbed = interaction.message.embeds[0];
         const reason = originalEmbed?.fields?.find(f => f.name.includes('Message'))?.value
             ?? 'Reason was not inputted. Consult the Issuing Moderator for further details.';
+        const authorisation = originalEmbed?.fields?.find(f => f.name.includes('Authorisation'))?.value ?? null;
 
         if (!member) {
-            await sendRankLog(guild, client, { targetUser: { id: userId, username: userId }, role, issuer, reason, status: 'FAILED', failReason: 'User not found in server' });
-            return interaction.followUp({ embeds: [noticeEmbed(false, `<@${userId}>`, role ? role.toString() : 'Unknown Role')], ephemeral: true });
+            await sendRankLog(guild, client, { targetUser: { id: userId, username: userId }, role, issuer, reason, action, status: 'FAILED', failReason: 'User not found in server' });
+            return interaction.followUp({ embeds: [noticeEmbed(false, `<@${userId}>`, role ? role.toString() : 'Unknown Role', action)], ephemeral: true });
         }
         if (!role) {
-            await sendRankLog(guild, client, { targetUser: member.user, role: null, issuer, reason, status: 'FAILED', failReason: 'Role not found' });
-            return interaction.followUp({ embeds: [noticeEmbed(false, member.toString(), 'Unknown Role')], ephemeral: true });
+            await sendRankLog(guild, client, { targetUser: member.user, role: null, issuer, reason, action, status: 'FAILED', failReason: 'Role not found' });
+            return interaction.followUp({ embeds: [noticeEmbed(false, member.toString(), 'Unknown Role', action)], ephemeral: true });
         }
         if (!issuer.permissions.has(PermissionFlagsBits.ManageRoles)) {
-            await sendRankLog(guild, client, { targetUser: member.user, role, issuer, reason, status: 'FAILED', failReason: 'Issuer lacks Manage Roles permission' });
-            return interaction.followUp({ embeds: [noticeEmbed(false, member.toString(), role.toString())], ephemeral: true });
+            await sendRankLog(guild, client, { targetUser: member.user, role, issuer, reason, action, status: 'FAILED', failReason: 'Issuer lacks Manage Roles permission' });
+            return interaction.followUp({ embeds: [noticeEmbed(false, member.toString(), role.toString(), action)], ephemeral: true });
         }
 
         try {
             const removedRoles = [];
 
-            if (RANK_HIERARCHY.includes(roleId)) {
-                for (const hRoleId of RANK_HIERARCHY) {
-                    if (hRoleId !== roleId && member.roles.cache.has(hRoleId)) {
-                        const hRole = guild.roles.cache.get(hRoleId);
-                        if (hRole) {
-                            await member.roles.remove(hRole, `Hierarchy replacement by ${interaction.user.tag}`);
-                            removedRoles.push(hRole);
+            if (action === 'add') {
+                if (RANK_HIERARCHY.includes(roleId)) {
+                    for (const hRoleId of RANK_HIERARCHY) {
+                        if (hRoleId !== roleId && member.roles.cache.has(hRoleId)) {
+                            const hRole = guild.roles.cache.get(hRoleId);
+                            if (hRole) {
+                                await member.roles.remove(hRole, `Hierarchy replacement by ${interaction.user.tag}`);
+                                removedRoles.push(hRole);
+                            }
                         }
                     }
                 }
+                await member.roles.add(role, `Rank set by ${interaction.user.tag}`);
+
+                await setInDb(`rank_last_change_${guild.id}_${userId}`, {
+                    roleName: role.name,
+                    roleId: role.id,
+                    issuerId: interaction.user.id,
+                    issuerName: interaction.user.tag,
+                    timestamp: Date.now(),
+                    reason,
+                    action: 'add'
+                });
+            } else {
+                if (!member.roles.cache.has(roleId)) {
+                    return interaction.followUp({ content: `⚠️ ${member.toString()} does not have the ${role.toString()} role.`, ephemeral: true });
+                }
+                await member.roles.remove(role, `Derank by ${interaction.user.tag}`);
+
+                await setInDb(`rank_last_change_${guild.id}_${userId}`, {
+                    roleName: role.name,
+                    roleId: role.id,
+                    issuerId: interaction.user.id,
+                    issuerName: interaction.user.tag,
+                    timestamp: Date.now(),
+                    reason,
+                    action: 'remove'
+                });
             }
 
-            await member.roles.add(role, `Rank set by ${interaction.user.tag}`);
-
-            await setInDb(`rank_last_change_${guild.id}_${userId}`, {
-                roleName: role.name,
-                roleId: role.id,
-                issuerId: interaction.user.id,
-                issuerName: interaction.user.tag,
-                timestamp: Date.now(),
-                reason
-            });
-
-            await sendRankLog(guild, client, { targetUser: member.user, role, removedRoles, issuer, reason, status: 'SUCCESS' });
+            await sendRankLog(guild, client, { targetUser: member.user, role, removedRoles, issuer, reason, authorisation, action, status: 'SUCCESS' });
             await interaction.editReply({ embeds: [originalEmbed], components: [] });
-            await interaction.followUp({ embeds: [noticeEmbed(true, member.toString(), role.toString())], ephemeral: true });
+            await interaction.followUp({ embeds: [noticeEmbed(true, member.toString(), role.toString(), action)], ephemeral: true });
+
         } catch (error) {
             logger.error('Rank select error:', error);
-            await sendRankLog(guild, client, { targetUser: member.user, role, issuer, reason, status: 'FAILED', failReason: error.message ?? 'Bot role may be below the target role' });
-            await interaction.followUp({ embeds: [noticeEmbed(false, member.toString(), role.toString())], ephemeral: true });
+            await sendRankLog(guild, client, { targetUser: member.user, role, issuer, reason, action, status: 'FAILED', failReason: error.message ?? 'Bot role may be below the target role' });
+            await interaction.followUp({ embeds: [noticeEmbed(false, member.toString(), role.toString(), action)], ephemeral: true });
         }
     }
 };

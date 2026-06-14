@@ -35,15 +35,29 @@ export const EXEMPT_RANKS = [
 export default {
     data: new SlashCommandBuilder()
         .setName('rank')
-        .setDescription("Set a user's rank by assigning a role")
+        .setDescription("Assign or remove a rank role from a user")
         .addUserOption(o =>
             o.setName('user')
-             .setDescription('The user to set the rank for')
+             .setDescription('The user to rank or derank')
              .setRequired(true)
+        )
+        .addStringOption(o =>
+            o.setName('action')
+             .setDescription('Whether to add or remove a rank')
+             .setRequired(true)
+             .addChoices(
+                 { name: 'Add Rank', value: 'add' },
+                 { name: 'Remove Rank', value: 'remove' }
+             )
         )
         .addStringOption(o =>
             o.setName('reason')
              .setDescription('Reason / message shown on the panel')
+             .setRequired(false)
+        )
+        .addStringOption(o =>
+            o.setName('authorisation')
+             .setDescription('Authorisation reference (required for Remove Rank)')
              .setRequired(false)
         )
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
@@ -59,7 +73,15 @@ export default {
             }
 
             const target = interaction.options.getUser('user');
+            const action = interaction.options.getString('action');
             const reason = interaction.options.getString('reason') || "Reason was not inputted. Consult the Issuing Moderator for further details.";
+            const authorisation = interaction.options.getString('authorisation') || null;
+
+            if (action === 'remove' && !authorisation) {
+                return InteractionHelper.safeEditReply(interaction, {
+                    content: '❌ **Authorisation** is required when removing a rank. Please re-run the command and fill in the `authorisation` field.'
+                });
+            }
 
             const roleOptions = ALL_MANAGED_RANK_IDS
                 .map(id => {
@@ -72,17 +94,27 @@ export default {
                 throw new Error("Could not find any of the managed rank roles in this server.");
             }
 
+            const isAdd = action === 'add';
+
             const embed = new EmbedBuilder()
-                .setColor(0x062F77)
+                .setColor(isAdd ? 0x062F77 : 0xFEE75C)
+                .setTitle(isAdd ? 'Assign Rank' : 'Remove Rank')
                 .addFields(
                     { name: '👤 User', value: `${target.toString()} (${target.id})` },
                     { name: '🌐 Group', value: interaction.guild.name },
+                    ...(isAdd ? [] : [{
+                        name: '🛡️ Authorised By',
+                        value: `${interaction.member.displayName} (${interaction.user.username})`
+                    }, {
+                        name: '✅ Authorisation',
+                        value: authorisation
+                    }]),
                     { name: '📋 Message', value: reason }
                 );
 
             const selectMenu = new StringSelectMenuBuilder()
-                .setCustomId(`rank_role_select:${target.id}`)
-                .setPlaceholder('Select a rank to assign...')
+                .setCustomId(`rank_role_select:${target.id}:${action}`)
+                .setPlaceholder(isAdd ? 'Select a rank to assign...' : 'Select a rank to remove...')
                 .addOptions(roleOptions);
 
             const row = new ActionRowBuilder().addComponents(selectMenu);
