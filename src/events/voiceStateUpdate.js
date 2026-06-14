@@ -9,6 +9,7 @@ import {
 import { sanitizeInput } from '../utils/sanitization.js';
 import { logger } from '../utils/logger.js';
 import { logEvent } from '../services/loggingService.js';
+import { getMusicPlayer } from '../services/musicService.js';
 
 const channelCreationCooldown = new Map();
 const VOICE_CREATE_COOLDOWN_MS = 2000;
@@ -28,6 +29,23 @@ export default {
         const isBot = member.user.bot;
         const cooldownKey = `${guildId}-${userId}`;
         cleanupCooldownEntries();
+
+        // Music auto-disconnect: if a non-bot member leaves and the bot's VC is now empty
+        if (!isBot && oldState.channelId && oldState.channelId !== newState.channelId) {
+            try {
+                const musicPlayer = getMusicPlayer(guildId);
+                if (musicPlayer && musicPlayer.voiceChannelId === oldState.channelId) {
+                    const channel = oldState.channel;
+                    const nonBotMembers = channel?.members?.filter(m => !m.user.bot) ?? { size: 0 };
+                    if (nonBotMembers.size === 0) {
+                        logger.info(`[Music] VC ${channel?.name} is empty — auto-disconnecting.`);
+                        await musicPlayer.stop(client);
+                    }
+                }
+            } catch (err) {
+                logger.warn('[Music] Auto-disconnect check error:', err.message);
+            }
+        }
 
         // Voice join/leave/move logging — runs for ALL users including bots
         try {
