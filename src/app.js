@@ -5,7 +5,7 @@ import express from 'express';
 import cron from 'node-cron';
 
 import config from './config/application.js';
-import { initializeDatabase } from './utils/database.js';
+import { initializeDatabase, setInDb } from './utils/database.js';
 import { getGuildConfig } from './services/guildConfig.js';
 import { getServerCounters, saveServerCounters, updateCounter } from './services/serverstatsService.js';
 import { logger, startupLog, shutdownLog } from './utils/logger.js';
@@ -318,9 +318,16 @@ class TitanBot extends Client {
         const channel = guild.channels.cache.get(OFFLINE_NOTICE_CHANNEL)
           || await guild.channels.fetch(OFFLINE_NOTICE_CHANNEL).catch(() => null);
         if (channel?.isTextBased?.()) {
-          await channel.send(
+          const msg = await channel.send(
             `<@&${STAFF_ROLE}> is going offline <t:${offlineAt}:R>\n<@&${PING_ROLE}>`
-          ).catch(() => {});
+          ).catch(() => null);
+          if (msg) {
+            await setInDb(`offline_notice_${guild.id}`, {
+              channelId: channel.id,
+              messageId: msg.id,
+              expiresAt: offlineAt
+            }).catch(() => {});
+          }
         }
       }
     } catch (err) {
