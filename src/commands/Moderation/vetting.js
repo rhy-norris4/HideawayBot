@@ -109,8 +109,13 @@ async function handleVettingCheck(interaction, client) {
         ? expiredCases.slice(0, 5).map(c => `• **${c.action}** — ${(c.reason || 'No reason').slice(0, 60)}`).join('\n')
         : 'None';
 
+    const noteTypeLabel = { warning: '⚠️ Warning', positive: '✅ Positive', neutral: '📝 Neutral', alert: '🚨 Alert' };
     const notesText = Array.isArray(notes) && notes.length > 0
-        ? notes.slice(0, 3).map(n => `• [${n.type || 'note'}] ${(n.note || '').slice(0, 60)}`).join('\n')
+        ? notes.slice(0, 5).map(n => {
+            const label = noteTypeLabel[n.type] || '📝 Note';
+            const content = (n.content || n.note || '').slice(0, 80);
+            return `• ${label} -- ${content}`;
+          }).join('\n')
         : 'None';
 
     const joinDate = member?.joinedAt
