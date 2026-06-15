@@ -27,6 +27,10 @@ export default {
                             { name: 'Conflict of Interest', value: 'conflict' }
                         )
                 )
+        )
+        .addSubcommand(sub =>
+            sub.setName('verify-panel')
+                .setDescription('Post the verification panel so members can verify themselves.')
         ),
     category: 'Tickets',
 
@@ -86,6 +90,29 @@ export default {
             );
 
             await interaction.reply({ content: '✅ Panel posted.', flags: MessageFlags.Ephemeral });
+            await interaction.channel.send({ embeds: [embed], components: [row] });
+        }
+
+        if (sub === 'verify-panel') {
+            const embed = new EmbedBuilder()
+                .setColor(0x5865F2)
+                .setTitle('🔐 Verification')
+                .setDescription(
+                    `Welcome to **The Hideaway**!\n\n` +
+                    `To gain full access to the server, you'll need to verify your account.\n\n` +
+                    `Press **Verify** below to receive the Member role and unlock the rest of the server.`
+                )
+                .setFooter({ text: 'The Hideaway • Verification' });
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('verify')
+                    .setLabel('Verify')
+                    .setEmoji('☑️')
+                    .setStyle(ButtonStyle.Success)
+            );
+
+            await interaction.reply({ content: '✅ Verification panel posted.', flags: MessageFlags.Ephemeral });
             await interaction.channel.send({ embeds: [embed], components: [row] });
         }
     }

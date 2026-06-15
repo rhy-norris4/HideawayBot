@@ -80,9 +80,12 @@ export default {
             }
         }
         
-        if (welcomeConfig?.roleIds && welcomeConfig.roleIds.length > 0) {
+        const VERIFICATION_ROLE_ID = '1511500090165039264';
+        const autoRoleIds = (welcomeConfig?.roleIds || []).filter(id => id !== VERIFICATION_ROLE_ID);
+
+        if (autoRoleIds.length > 0) {
             const delay = welcomeConfig.autoRoleDelay || 0;
-            const singleRoleId = welcomeConfig.roleIds[0];
+            const singleRoleId = autoRoleIds[0];
             
             if (delay > 0) {
                 const timeout = setTimeout(async () => {
