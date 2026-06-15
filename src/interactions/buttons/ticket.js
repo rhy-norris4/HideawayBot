@@ -1,10 +1,8 @@
 import {
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle,
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
+    ActionRowBuilder,
     EmbedBuilder,
     AttachmentBuilder,
     MessageFlags
@@ -13,8 +11,7 @@ import {
     TICKET_TYPES,
     getTicketData,
     updateTicketData,
-    generateTranscript,
-    closeTicket
+    generateTranscript
 } from '../../services/ticketService.js';
 import { logger } from '../../utils/logger.js';
 
@@ -186,51 +183,23 @@ export default [
                 });
             }
 
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId('ticket_close_confirm')
-                    .setLabel('Yes, Close Ticket')
-                    .setStyle(ButtonStyle.Danger),
-                new ButtonBuilder()
-                    .setCustomId('ticket_close_cancel')
-                    .setLabel('Cancel')
-                    .setStyle(ButtonStyle.Secondary)
+            const modal = new ModalBuilder()
+                .setCustomId('ticket_close_modal')
+                .setTitle('Close Ticket');
+
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(
+                    new TextInputBuilder()
+                        .setCustomId('close_reason')
+                        .setLabel('Reason for closing')
+                        .setStyle(TextInputStyle.Paragraph)
+                        .setPlaceholder('Describe why this ticket is being closed...')
+                        .setRequired(true)
+                        .setMaxLength(1000)
+                )
             );
 
-            await interaction.reply({
-                content: '🔒 Are you sure you want to close this ticket? A transcript will be saved to the log channel.',
-                components: [row],
-                flags: MessageFlags.Ephemeral
-            });
-        }
-    },
-
-    {
-        name: 'ticket_close_confirm',
-        async execute(interaction, client) {
-            const ticket = await getTicketData(interaction.guildId, interaction.channelId);
-            if (!ticket) {
-                return interaction.reply({ content: '❌ No ticket found for this channel.', flags: MessageFlags.Ephemeral });
-            }
-
-            if (interaction.user.id !== ticket.userId && !isSupportStaff(interaction.member)) {
-                return interaction.reply({ content: '❌ Permission denied.', flags: MessageFlags.Ephemeral });
-            }
-
-            await interaction.reply({ content: '🔒 Saving transcript and closing ticket...', flags: MessageFlags.Ephemeral });
-
-            try {
-                await closeTicket(client, interaction.guild, interaction.channel, interaction.user);
-            } catch (err) {
-                logger.error('[Tickets] closeTicket error:', err.message);
-            }
-        }
-    },
-
-    {
-        name: 'ticket_close_cancel',
-        async execute(interaction, client) {
-            await interaction.reply({ content: '✅ Close cancelled.', flags: MessageFlags.Ephemeral });
+            await interaction.showModal(modal);
         }
     },
 
@@ -274,54 +243,6 @@ export default [
                 .setTimestamp();
 
             await interaction.reply({ embeds: [embed] });
-        }
-    },
-
-    {
-        name: 'ticket_escalate',
-        async execute(interaction, client) {
-            if (!isSupportStaff(interaction.member)) {
-                return interaction.reply({ content: '❌ Only staff can escalate tickets.', flags: MessageFlags.Ephemeral });
-            }
-
-            const ticket = await getTicketData(interaction.guildId, interaction.channelId);
-            if (!ticket) {
-                return interaction.reply({ content: '❌ This channel is not a ticket.', flags: MessageFlags.Ephemeral });
-            }
-            if (ticket.type !== 'support') {
-                return interaction.reply({ content: '❌ Only General Support tickets can be escalated.', flags: MessageFlags.Ephemeral });
-            }
-            if (ticket.escalated) {
-                return interaction.reply({ content: '❌ This ticket has already been escalated.', flags: MessageFlags.Ephemeral });
-            }
-
-            for (const roleId of MOD_ROLES) {
-                await interaction.channel.permissionOverwrites.edit(roleId, {
-                    ViewChannel: true,
-                    SendMessages: true,
-                    ReadMessageHistory: true,
-                    ManageMessages: true,
-                    AttachFiles: true
-                }).catch(() => {});
-            }
-
-            await updateTicketData(interaction.guildId, interaction.channelId, {
-                escalated: true,
-                escalatedBy: interaction.user.id,
-                escalatedAt: Date.now()
-            });
-
-            const embed = new EmbedBuilder()
-                .setColor(0xFEE75C)
-                .setTitle('⬆️ Ticket Escalated to Senior Staff')
-                .setDescription(
-                    `This ticket has been escalated by **${interaction.user.tag}**.\n` +
-                    `Senior staff have been notified and will review this shortly.`
-                )
-                .setTimestamp();
-
-            const modPing = MOD_ROLES.map(r => `<@&${r}>`).join(' ');
-            await interaction.reply({ content: modPing, embeds: [embed] });
         }
     },
 

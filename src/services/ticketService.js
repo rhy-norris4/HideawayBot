@@ -209,25 +209,13 @@ export async function createTicketChannel(client, guild, user, type, fields) {
             .setStyle(ButtonStyle.Danger)
     );
 
-    const row2Buttons = [
+    const row2 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('ticket_transcript')
             .setLabel('Transcript')
             .setEmoji('📄')
             .setStyle(ButtonStyle.Secondary)
-    ];
-
-    if (type === 'support') {
-        row2Buttons.unshift(
-            new ButtonBuilder()
-                .setCustomId('ticket_escalate')
-                .setLabel('Escalate to Senior Staff')
-                .setEmoji('⬆️')
-                .setStyle(ButtonStyle.Primary)
-        );
-    }
-
-    const row2 = new ActionRowBuilder().addComponents(...row2Buttons);
+    );
 
     const controlMsg = await channel.send({
         content: `<@${user.id}> Welcome! A staff member will be with you shortly.`,
@@ -236,8 +224,6 @@ export async function createTicketChannel(client, guild, user, type, fields) {
     });
 
     await controlMsg.pin().catch(() => {});
-
-    await sendOpenLog(client, guild, type, user, ticketData, channel, ticketNum);
 
     return { channel, ticketData };
 }
@@ -335,21 +321,24 @@ function msToHuman(ms) {
     return `${h}h ${m % 60}m`;
 }
 
-export async function closeTicket(client, guild, channel, closedBy) {
+const TICKET_LOG_CHANNEL = '1514063621712515213';
+
+export async function closeTicket(client, guild, channel, closedBy, reason = 'No reason provided') {
     const ticketData = await getTicketData(guild.id, channel.id);
     if (!ticketData) return;
 
     await updateTicketData(guild.id, channel.id, {
         status: 'closed',
         closedAt: Date.now(),
-        closedBy: closedBy.id
+        closedBy: closedBy.id,
+        closeReason: reason
     });
     await clearActiveTicket(guild.id, ticketData.userId, ticketData.type);
 
     try {
         const transcript = await generateTranscript(channel);
         const config = TICKET_TYPES[ticketData.type];
-        const webhook = await getOrCreateWebhook(client, guild, config.webhookChannelId);
+        const webhook = await getOrCreateWebhook(client, guild, TICKET_LOG_CHANNEL);
 
         if (webhook) {
             const buffer = Buffer.from(transcript, 'utf-8');
@@ -360,11 +349,12 @@ export async function closeTicket(client, guild, channel, closedBy) {
                 .setTitle(`🔒 Ticket Closed — #${channel.name}`)
                 .addFields(
                     { name: 'Type', value: config.label, inline: true },
+                    { name: 'Ticket #', value: String(ticketData.num), inline: true },
                     { name: 'Opened By', value: `<@${ticketData.userId}>`, inline: true },
                     { name: 'Closed By', value: `<@${closedBy.id}>`, inline: true },
-                    { name: 'Duration', value: msToHuman(Date.now() - ticketData.createdAt), inline: true },
                     { name: 'Claimed By', value: ticketData.claimedBy ? `<@${ticketData.claimedBy}>` : '*Unclaimed*', inline: true },
-                    { name: 'Escalated', value: ticketData.escalated ? 'Yes' : 'No', inline: true }
+                    { name: 'Duration', value: msToHuman(Date.now() - ticketData.createdAt), inline: true },
+                    { name: 'Close Reason', value: reason.slice(0, 1024) }
                 )
                 .setTimestamp();
 
