@@ -21,7 +21,7 @@ export default {
                         .setDescription('Which ticket panel to display')
                         .setRequired(true)
                         .addChoices(
-                            { name: 'General Support', value: 'support' },
+                            { name: 'Support', value: 'support' },
                             { name: 'Community Report', value: 'community_report' },
                             { name: 'Staff Report', value: 'staff_report' },
                             { name: 'Conflict of Interest', value: 'conflict' }
