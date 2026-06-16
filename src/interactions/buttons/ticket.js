@@ -11,7 +11,9 @@ import {
     TICKET_TYPES,
     getTicketData,
     updateTicketData,
-    generateTranscript
+    generateTranscript,
+    escalateTicket,
+    ESCALATION_LEVELS
 } from '../../services/ticketService.js';
 import { logger } from '../../utils/logger.js';
 
