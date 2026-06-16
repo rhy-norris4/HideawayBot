@@ -2,7 +2,10 @@ import {
     EmbedBuilder,
     PermissionFlagsBits,
     ChannelType,
-    AttachmentBuilder
+    AttachmentBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle
 } from 'discord.js';
 import {
     getFromDb,
@@ -377,17 +380,37 @@ export async function closeTicket(client, guild, channel, closedBy, reason = 'No
             const buffer = Buffer.from(transcript, 'utf-8');
             const file = new AttachmentBuilder(buffer, { name: `transcript-${channel.name}.txt` });
 
+            const openedUser = await client.users.fetch(ticketData.userId).catch(() => null);
+            const closedByUser = await client.users.fetch(closedBy.id).catch(() => null);
+
             const closeEmbed = new EmbedBuilder()
-                .setColor(0x2F3136)
-                .setTitle(`🔒 Ticket Closed — #${channel.name}`)
+                .setColor(config.color)
+                .setTitle(`🔒 ${config.label} Closed`)
                 .addFields(
-                    { name: 'Type', value: config.label, inline: true },
-                    { name: 'Ticket #', value: String(ticketData.num), inline: true },
-                    { name: 'Opened By', value: `<@${ticketData.userId}>`, inline: true },
-                    { name: 'Closed By', value: `<@${closedBy.id}>`, inline: true },
-                    { name: 'Claimed By', value: ticketData.claimedBy ? `<@${ticketData.claimedBy}>` : '*Unclaimed*', inline: true },
-                    { name: 'Duration', value: msToHuman(Date.now() - ticketData.createdAt), inline: true },
-                    { name: 'Close Reason', value: reason.slice(0, 1024) }
+                    { 
+                        name: '🆔 Ticket ID', 
+                        value: `\`${ticketData.guildId}${ticketData.createdAt}${ticketData.num}\`` 
+                    },
+                    { 
+                        name: '📌 Ticket Ref', 
+                        value: `\`${channel.name}\`` 
+                    },
+                    { 
+                        name: '🌐 Server', 
+                        value: `\`${ticketData.guildId}\`` 
+                    },
+                    { 
+                        name: '👤 Opened by', 
+                        value: `${openedUser || `User#${ticketData.userId}`} at <t:${Math.floor(ticketData.createdAt / 1000)}:f>` 
+                    },
+                    { 
+                        name: '⏰ Closed by', 
+                        value: `${closedByUser || `User#${closedBy.id}`} at <t:${Math.floor(Date.now() / 1000)}:f>` 
+                    },
+                    { 
+                        name: '📋 Reason', 
+                        value: `\`\`\`${reason}\`\`\`` 
+                    }
                 )
                 .setTimestamp();
 
