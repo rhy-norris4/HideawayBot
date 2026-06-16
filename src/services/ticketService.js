@@ -14,10 +14,10 @@ import { logger } from '../utils/logger.js';
 
 export const TICKET_TYPES = {
     support: {
-        label: 'General Support',
+        label: 'Support',
         emoji: '🎫',
         color: 0x5865F2,
-        categoryId: '1515868924913385593',
+        categoryId: '1515869049886740682',
         webhookChannelId: '1511811210020917409',
         description: 'Need help? Our support team is here for you.'
     },
@@ -33,7 +33,7 @@ export const TICKET_TYPES = {
         label: 'Staff Report',
         emoji: '🛡️',
         color: 0xFEE75C,
-        categoryId: '1515869096380596294',
+        categoryId: '1516547251886096494',
         webhookChannelId: '1511811210020917409',
         description: 'Report a staff member confidentially.'
     },
@@ -44,6 +44,33 @@ export const TICKET_TYPES = {
         categoryId: '1515869176848191508',
         webhookChannelId: '1514313553803477084',
         description: 'Flag a potential conflict of interest involving staff.'
+    }
+};
+
+export const ESCALATION_LEVELS = {
+    moderation: {
+        label: 'Moderation',
+        categoryId: '1515869049886740682',
+        roleId: '1511500082753830992',
+        color: 0x5865F2
+    },
+    senior_moderation: {
+        label: 'Senior Moderation',
+        categoryId: '1516547251886096494',
+        roleId: '1511500082053120020',
+        color: 0xFEE75C
+    },
+    head_moderation: {
+        label: 'Head Moderation',
+        categoryId: '1516547331938324520',
+        roleId: '1511500080031469790',
+        color: 0x57F287
+    },
+    management: {
+        label: 'Management',
+        categoryId: '1516547415140991176',
+        roleId: '1511500077137399928',
+        color: 0xEB459E
     }
 };
 
@@ -185,6 +212,12 @@ export async function createTicketChannel(client, guild, user, type, fields) {
         status: 'open',
         claimedBy: null,
         escalated: false,
+        escalationLevel: null,
+        escalationReason: null,
+        escalatedBy: null,
+        escalatedAt: null,
+        addedUsers: [],
+        addedRoles: [],
         createdAt: Date.now(),
         fields
     };
@@ -380,4 +413,90 @@ export async function closeTicket(client, guild, channel, closedBy, reason = 'No
     await channel.send({ content: '🔒 This ticket is now closed. The channel will be deleted in 5 seconds.' });
     await new Promise(r => setTimeout(r, 5000));
     await channel.delete(`Ticket closed by ${closedBy.tag}`).catch(() => {});
+}
+
+export async function addUserToTicket(guild, channel, ticketData, userId) {
+    if (!ticketData.addedUsers) ticketData.addedUsers = [];
+    if (ticketData.addedUsers.includes(userId)) return false;
+
+    ticketData.addedUsers.push(userId);
+    await updateTicketData(guild.id, channel.id, { addedUsers: ticketData.addedUsers });
+
+    await channel.permissionOverwrites.edit(userId, {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true,
+        AttachFiles: true
+    }).catch(() => {});
+
+    return true;
+}
+
+export async function removeUserFromTicket(guild, channel, ticketData, userId) {
+    if (!ticketData.addedUsers || !ticketData.addedUsers.includes(userId)) return false;
+
+    ticketData.addedUsers = ticketData.addedUsers.filter(id => id !== userId);
+    await updateTicketData(guild.id, channel.id, { addedUsers: ticketData.addedUsers });
+
+    await channel.permissionOverwrites.delete(userId).catch(() => {});
+
+    return true;
+}
+
+export async function addRoleToTicket(guild, channel, ticketData, roleId) {
+    if (!ticketData.addedRoles) ticketData.addedRoles = [];
+    if (ticketData.addedRoles.includes(roleId)) return false;
+
+    ticketData.addedRoles.push(roleId);
+    await updateTicketData(guild.id, channel.id, { addedRoles: ticketData.addedRoles });
+
+    await channel.permissionOverwrites.edit(roleId, {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true,
+        AttachFiles: true
+    }).catch(() => {});
+
+    return true;
+}
+
+export async function removeRoleFromTicket(guild, channel, ticketData, roleId) {
+    if (!ticketData.addedRoles || !ticketData.addedRoles.includes(roleId)) return false;
+
+    ticketData.addedRoles = ticketData.addedRoles.filter(id => id !== roleId);
+    await updateTicketData(guild.id, channel.id, { addedRoles: ticketData.addedRoles });
+
+    await channel.permissionOverwrites.delete(roleId).catch(() => {});
+
+    return true;
+}
+
+export async function escalateTicket(client, guild, channel, ticketData, escalationLevel, reason, escalatedBy) {
+    const config = ESCALATION_LEVELS[escalationLevel];
+    if (!config) throw new Error(`Unknown escalation level: ${escalationLevel}`);
+
+    const oldCategoryId = ticketData.type ? TICKET_TYPES[ticketData.type]?.categoryId : null;
+
+    // Move to new category
+    if (config.categoryId !== oldCategoryId) {
+        await channel.setParent(config.categoryId).catch(() => {});
+    }
+
+    // Add escalation role permissions
+    await channel.permissionOverwrites.edit(config.roleId, {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true,
+        ManageMessages: true,
+        AttachFiles: true
+    }).catch(() => {});
+
+    // Update ticket data
+    await updateTicketData(guild.id, channel.id, {
+        escalated: true,
+        escalationLevel,
+        escalationReason: reason,
+        escalatedBy: escalatedBy.id,
+        escalatedAt: Date.now()
+    });
 }
