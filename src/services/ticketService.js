@@ -417,16 +417,47 @@ export async function closeTicket(client, guild, channel, closedBy, reason = 'No
             )
             .setTimestamp();
 
+        const { ButtonBuilder, ButtonStyle, ActionRowBuilder: AR } = await import('discord.js');
+
         const webhook = await getOrCreateWebhook(client, guild, TICKET_LOG_CHANNEL);
-        if (webhook) {
-            await webhook.send({ embeds: [closeEmbed], files: [file] });
+        const logChannel = webhook
+            ? null
+            : (guild.channels.cache.get(TICKET_LOG_CHANNEL)
+                || await guild.channels.fetch(TICKET_LOG_CHANNEL).catch(() => null));
+
+        if (!webhook && !logChannel) {
+            logger.warn('[Tickets] Could not reach ticket log channel:', TICKET_LOG_CHANNEL);
         } else {
-            const logChannel = guild.channels.cache.get(TICKET_LOG_CHANNEL)
-                || await guild.channels.fetch(TICKET_LOG_CHANNEL).catch(() => null);
-            if (logChannel) {
-                await logChannel.send({ embeds: [closeEmbed], files: [file] });
+            // Upload the transcript file first to obtain its CDN URL
+            let attachmentUrl = null;
+            try {
+                const fileMsg = webhook
+                    ? await webhook.send({ files: [file] })
+                    : await logChannel.send({ files: [file] });
+                attachmentUrl = fileMsg?.attachments?.first?.()?.url;
+            } catch (uploadErr) {
+                logger.warn('[Tickets] Transcript upload error:', uploadErr.message);
+            }
+
+            // Build button only when we have a valid URL
+            const components = [];
+            if (attachmentUrl) {
+                components.push(
+                    new AR().addComponents(
+                        new ButtonBuilder()
+                            .setLabel('Download Transcript')
+                            .setStyle(ButtonStyle.Link)
+                            .setEmoji('📄')
+                            .setURL(attachmentUrl)
+                    )
+                );
+            }
+
+            // Send the embed (no file attached) with the button
+            if (webhook) {
+                await webhook.send({ embeds: [closeEmbed], components });
             } else {
-                logger.warn('[Tickets] Could not reach ticket log channel:', TICKET_LOG_CHANNEL);
+                await logChannel.send({ embeds: [closeEmbed], components });
             }
         }
     } catch (err) {
