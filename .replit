@@ -46,12 +46,12 @@ args = "Start application"
 name = "Start application"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "console"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "node src/app.js"
-
-[workflows.workflow.metadata]
-outputType = "console"
 
 [[ports]]
 localPort = 3000
