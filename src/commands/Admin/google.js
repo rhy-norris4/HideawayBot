@@ -25,7 +25,10 @@ export default {
     data: new SlashCommandBuilder()
         .setName('google')
         .setDescription('Manage Google email linking and role sync')
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+        .addSubcommand(sub =>
+            sub.setName('link')
+                .setDescription('See which Google Groups you should join based on your roles')
+        )
         .addSubcommand(sub =>
             sub.setName('update')
                 .setDescription('Sync a member\'s Discord roles based on their linked Google email')
@@ -131,6 +134,46 @@ export default {
                         })],
                     });
                 }
+            }
+
+            if (sub === 'link') {
+                const mappings = await getMappings(interaction.guildId);
+
+                if (!mappings.length) {
+                    return interaction.editReply({
+                        embeds: [createEmbed({
+                            title: '📋 Google Groups',
+                            description: 'No Google Group mappings have been configured for this server yet.',
+                            color: 'primary',
+                        })],
+                    });
+                }
+
+                const memberRoles = interaction.member.roles.cache;
+                const myGroups = mappings.filter(m => memberRoles.has(m.roleId));
+
+                if (!myGroups.length) {
+                    return interaction.editReply({
+                        embeds: [createEmbed({
+                            title: '📋 Your Google Groups',
+                            description: 'None of your current roles are mapped to a Google Group.\n\nIf you think this is wrong, contact a staff member.',
+                            color: 'primary',
+                        })],
+                    });
+                }
+
+                const groupLines = myGroups.map(m => {
+                    const name = m.groupName && m.groupName !== m.groupEmail ? m.groupName : m.groupEmail;
+                    return `**${name}**\n📧 \`${m.groupEmail}\`\n🔗 [Join via groups.google.com](https://groups.google.com/g/${m.groupEmail.split('@')[0]})`;
+                });
+
+                return interaction.editReply({
+                    embeds: [createEmbed({
+                        title: '📋 Your Google Groups',
+                        description: `Based on your roles, you should be a member of the following Google Group${myGroups.length !== 1 ? 's' : ''}:\n\n${groupLines.join('\n\n')}\n\n**How to join:** Go to [groups.google.com](https://groups.google.com), search for the group by name, and request to join. Make sure you're signed in with your linked email.`,
+                        color: 'primary',
+                    })],
+                });
             }
 
             const allowed = await canUseGoogleUpdate(interaction.member, interaction.guildId);

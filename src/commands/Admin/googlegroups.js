@@ -16,6 +16,19 @@ export default {
         .setDescription('Link Google Groups to Discord roles')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addSubcommand(sub =>
+            sub.setName('map')
+                .setDescription('Map a Discord role to a Google Group')
+                .addRoleOption(o =>
+                    o.setName('role').setDescription('The Discord role to map (e.g. @Members)').setRequired(true)
+                )
+                .addStringOption(o =>
+                    o.setName('group_email').setDescription('Google Group email (e.g. mygroupname@googlegroups.com)').setRequired(true)
+                )
+                .addStringOption(o =>
+                    o.setName('group_name').setDescription('Friendly display name for this group (e.g. Members Group)').setRequired(true)
+                )
+        )
+        .addSubcommand(sub =>
             sub.setName('add')
                 .setDescription('Link a Google Group to a Discord role')
                 .addStringOption(o =>
@@ -52,6 +65,37 @@ export default {
         const sub = interaction.options.getSubcommand();
 
         try {
+            if (sub === 'map') {
+                const role = interaction.options.getRole('role');
+                const groupEmail = interaction.options.getString('group_email').toLowerCase().trim();
+                const groupName = interaction.options.getString('group_name').trim();
+
+                if (!groupEmail.includes('@')) {
+                    return interaction.editReply({
+                        embeds: [createEmbed({
+                            title: '❌ Invalid Email',
+                            description: 'Please provide a full Google Group email address (e.g. `mygroupname@googlegroups.com`).',
+                            color: 'error',
+                        })],
+                    });
+                }
+
+                await addMapping(interaction.guildId, groupEmail, role.id, groupName);
+
+                return interaction.editReply({
+                    embeds: [createEmbed({
+                        title: '✅ Group Mapped',
+                        description: `**${groupName}** has been mapped. Members with the ${role} role will be directed to join this group when they use \`/google link\`.`,
+                        color: 'success',
+                        fields: [
+                            { name: 'Group Name', value: groupName, inline: true },
+                            { name: 'Group Email', value: `\`${groupEmail}\``, inline: true },
+                            { name: 'Discord Role', value: role.toString(), inline: true },
+                        ],
+                    })],
+                });
+            }
+
             if (sub === 'add') {
                 const groupEmail = interaction.options.getString('group').toLowerCase().trim();
                 const role = interaction.options.getRole('role');
@@ -119,9 +163,13 @@ export default {
 
                 const fields = mappings.map((m, i) => {
                     const role = interaction.guild.roles.cache.get(m.roleId);
+                    const displayName = m.groupName && m.groupName !== m.groupEmail ? m.groupName : null;
                     return {
-                        name: `#${i + 1} — ${m.groupEmail}`,
-                        value: role ? role.toString() : `Unknown role (${m.roleId})`,
+                        name: `#${i + 1} — ${displayName || m.groupEmail}`,
+                        value: [
+                            role ? `**Role:** ${role.toString()}` : `**Role:** Unknown (${m.roleId})`,
+                            `**Email:** \`${m.groupEmail}\``,
+                        ].join('\n'),
                         inline: false,
                     };
                 });
@@ -129,7 +177,7 @@ export default {
                 return interaction.editReply({
                     embeds: [createEmbed({
                         title: '📋 Google Group Mappings',
-                        description: `${mappings.length} mapping${mappings.length !== 1 ? 's' : ''} configured. Sync runs automatically every 30 minutes.`,
+                        description: `${mappings.length} mapping${mappings.length !== 1 ? 's' : ''} configured.\n\nMembers can run \`/google link\` to see which groups apply to them.`,
                         color: 'primary',
                         fields,
                     })],

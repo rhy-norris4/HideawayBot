@@ -84,13 +84,14 @@ export async function getMappings(guildId) {
     return Array.isArray(data) ? data : [];
 }
 
-export async function addMapping(guildId, groupEmail, roleId) {
+export async function addMapping(guildId, groupEmail, roleId, groupName = null) {
     const mappings = await getMappings(guildId);
     const existing = mappings.find(m => m.groupEmail.toLowerCase() === groupEmail.toLowerCase());
     if (existing) {
         existing.roleId = roleId;
+        if (groupName) existing.groupName = groupName;
     } else {
-        mappings.push({ groupEmail: groupEmail.toLowerCase(), roleId });
+        mappings.push({ groupEmail: groupEmail.toLowerCase(), roleId, groupName: groupName || groupEmail });
     }
     await setInDb(MAPPINGS_KEY(guildId), mappings);
     return mappings;
