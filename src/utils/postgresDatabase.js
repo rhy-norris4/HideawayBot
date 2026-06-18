@@ -37,27 +37,35 @@ class PostgreSQLDatabase {
             try {
                 await new Promise(resolve => setTimeout(resolve, 100));
 
-                this.pool = new pg.Pool({
-                    
-                    host: pgConfig.options.host,
-                    port: pgConfig.options.port,
-                    database: pgConfig.options.database,
-                    user: pgConfig.options.user,
-                    password: pgConfig.options.password,
-                    ssl: pgConfig.options.ssl,
-                    
-                    
-                    max: pgConfig.options.max,
-                    min: pgConfig.options.min,
-                    idleTimeoutMillis: pgConfig.options.idleTimeoutMillis,
-                    connectionTimeoutMillis: pgConfig.options.connectionTimeoutMillis,
-                    
-                    
-                    application_name: pgConfig.options.application_name,
-                    statement_timeout: pgConfig.options.statement_timeout,
-                    keepalives: pgConfig.options.keepalives,
-                    keepalives_idle: pgConfig.options.keepalives_idle,
-                });
+                const poolConfig = process.env.DATABASE_URL
+                    ? {
+                        connectionString: process.env.DATABASE_URL,
+                        max: pgConfig.options.max,
+                        min: pgConfig.options.min,
+                        idleTimeoutMillis: pgConfig.options.idleTimeoutMillis,
+                        connectionTimeoutMillis: pgConfig.options.connectionTimeoutMillis,
+                        application_name: pgConfig.options.application_name,
+                        statement_timeout: pgConfig.options.statement_timeout,
+                        keepalives: pgConfig.options.keepalives,
+                        keepalives_idle: pgConfig.options.keepalives_idle,
+                    }
+                    : {
+                        host: pgConfig.options.host,
+                        port: pgConfig.options.port,
+                        database: pgConfig.options.database,
+                        user: pgConfig.options.user,
+                        password: pgConfig.options.password,
+                        ssl: pgConfig.options.ssl,
+                        max: pgConfig.options.max,
+                        min: pgConfig.options.min,
+                        idleTimeoutMillis: pgConfig.options.idleTimeoutMillis,
+                        connectionTimeoutMillis: pgConfig.options.connectionTimeoutMillis,
+                        application_name: pgConfig.options.application_name,
+                        statement_timeout: pgConfig.options.statement_timeout,
+                        keepalives: pgConfig.options.keepalives,
+                        keepalives_idle: pgConfig.options.keepalives_idle,
+                    };
+                this.pool = new pg.Pool(poolConfig);
 
                 const client = await this.pool.connect();
                 await client.query('SELECT NOW()');
