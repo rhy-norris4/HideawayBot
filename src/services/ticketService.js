@@ -404,4 +404,88 @@ export async function closeTicket(client, guild, channel, closedBy, reason = 'No
                 },
                 {
                     name: '📋 Reason',
-                    value: `
+                    value: `${reason}`
+                }
+            )
+            .setTimestamp();
+
+        // Try to upload transcript to log channel and capture a URL
+        let transcriptUrl = null;
+        try {
+            const webhook = await getOrCreateWebhook(client, guild, TICKET_LOG_CHANNEL);
+            if (webhook) {
+                const msg = await webhook.send({ content: `Transcript for ${channel.name}`, files: [file] });
+                if (msg) transcriptUrl = (msg.attachments?.first()?.url) || msg.url || null;
+            } else {
+                const logChannel = guild.channels.cache.get(TICKET_LOG_CHANNEL)
+                    || await guild.channels.fetch(TICKET_LOG_CHANNEL).catch(() => null);
+                if (logChannel) {
+                    const msg = await logChannel.send({ content: `Transcript for ${channel.name}`, files: [file] }).catch(() => null);
+                    if (msg) transcriptUrl = (msg.attachments?.first()?.url) || msg.url || null;
+                }
+            }
+        } catch (err) {
+            logger.warn('[Tickets] Failed to upload transcript to log channel:', err?.message || err);
+        }
+
+        // Build DM components
+        const components = [];
+        if (transcriptUrl) {
+            const linkRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setLabel('View Online Transcript')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL(transcriptUrl)
+            );
+            components.push(linkRow);
+        }
+
+        const ratingRow = new ActionRowBuilder();
+        for (let r = 1; r <= 5; r++) {
+            ratingRow.addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`ticket_rate:${guild.id}:${channel.id}:${r}`)
+                    .setLabel(`${r}`)
+                    .setStyle(r >= 4 ? ButtonStyle.Success : ButtonStyle.Secondary)
+            );
+        }
+        components.push(ratingRow);
+
+        // Attempt to DM the ticket opener
+        try {
+            if (openedUser) {
+                await openedUser.send({
+                    content: `Your ticket **#${ticketData.num}** has been closed by ${closedByUser?.tag || closedBy.id}.`,
+                    embeds: [closeEmbed],
+                    components
+                }).catch(err => {
+                    logger.warn(`[Tickets] Could not DM user ${ticketData.userId}: ${err?.message || err}`);
+                });
+            }
+        } catch (err) {
+            logger.warn('[Tickets] DM send error:', err?.message || err);
+        }
+
+        // Send close embed to log channel (via webhook if available)
+        try {
+            const webhook = await getOrCreateWebhook(client, guild, TICKET_LOG_CHANNEL);
+            if (webhook) {
+                await webhook.send({ embeds: [closeEmbed] });
+            } else {
+                const logChannel = guild.channels.cache.get(TICKET_LOG_CHANNEL)
+                    || await guild.channels.fetch(TICKET_LOG_CHANNEL).catch(() => null);
+                if (logChannel) await logChannel.send({ embeds: [closeEmbed] });
+            }
+        } catch (err) {
+            logger.warn('[Tickets] Failed to post close embed to log channel:', err?.message || err);
+        }
+
+        // Optionally: notify the ticket channel
+        try {
+            await channel.send({ content: `🔒 This ticket has been closed by ${closedByUser ? `<@${closedByUser.id}>` : closedBy.id}.` }).catch(() => {});
+        } catch (err) {}
+
+    } catch (err) {
+        logger.error('[Tickets] Error closing ticket:', err?.message || err);
+    }
+}
