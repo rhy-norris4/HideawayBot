@@ -8,12 +8,8 @@ const BOARD_LINK = 'https://uk.pinterest.com/Rhy_m4/lando-norris/';
 const CACHE_TTL = 10 * 60 * 1000;
 let imageCache = { urls: [], fetchedAt: 0 };
 
-async function fetchBoardImages() {
-    if (imageCache.urls.length > 0 && Date.now() - imageCache.fetchedAt < CACHE_TTL) {
-        return imageCache.urls;
-    }
-
-    const res = await fetch(BOARD_URL, {
+async function fetchFromUrl(url) {
+    const res = await fetch(url, {
         headers: {
             'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
             'Accept': 'text/html,application/xhtml+xml',
@@ -23,18 +19,59 @@ async function fetchBoardImages() {
     });
 
     if (!res.ok) throw new Error(`Pinterest fetch failed: ${res.status}`);
-    const html = await res.text();
+    return res.text();
+}
+
+async function fetchBoardImages() {
+    if (imageCache.urls.length > 0 && Date.now() - imageCache.fetchedAt < CACHE_TTL) {
+        return imageCache.urls;
+    }
+
+    // Try primary board URL first, then fallback to the UK variant if needed.
+    const tryUrls = [BOARD_URL, BOARD_LINK];
+    let html = '';
+    let lastErr = null;
+
+    for (const u of tryUrls) {
+        try {
+            html = await fetchFromUrl(u);
+            if (html && html.length) break;
+        } catch (err) {
+            lastErr = err;
+            logger.debug(`[LandoNorris] Fetch from ${u} failed: ${err.message}`);
+        }
+    }
+
+    if (!html) {
+        throw lastErr || new Error('Empty response from Pinterest');
+    }
 
     const seen = new Set();
     const urls = [];
 
-    for (const match of html.matchAll(/https:\/\/i\.pinimg\.com\/[^"')]+\.jpg/g)) {
+    // Match common image hosts used by Pinterest and common extensions.
+    const regex = /https:\/\/i\.pinimg\.com\/[^"')\s]+?\.(?:jpg|jpeg|png|webp)(?:\?[^"'\s]*)?/g;
+    for (const match of html.matchAll(regex)) {
         const raw = match[0];
-        const hash = raw.replace(/https:\/\/i\.pinimg\.com\/[^/]+\//, '');
-        if (seen.has(hash)) continue;
-        seen.add(hash);
-        const full = `https://i.pinimg.com/originals/${hash}`;
-        urls.push(full);
+        // Normalize to the originals path to get the best quality image.
+        const original = raw.replace(/https:\/\/i\.pinimg\.com\/[^/]+\//, 'https://i.pinimg.com/originals/').split('?')[0];
+        const filename = original.substring(original.lastIndexOf('/') + 1);
+        if (seen.has(filename)) continue;
+        seen.add(filename);
+        urls.push(original);
+    }
+
+    if (urls.length === 0) {
+        // As a last resort, try to parse embedded JSON blobs that sometimes contain image URLs.
+        // Look for url fields with i.pinimg.com inside the page.
+        for (const match of html.matchAll(/"(https:\/\/i\.pinimg\.com\/[^"\\]+?\.(?:jpg|jpeg|png|webp))"/g)) {
+            const raw = match[1].replace(/\\\//g, '/').split('?')[0];
+            const original = raw.replace(/https:\/\/i\.pinimg\.com\/[^/]+\//, 'https://i.pinimg.com/originals/');
+            const filename = original.substring(original.lastIndexOf('/') + 1);
+            if (seen.has(filename)) continue;
+            seen.add(filename);
+            urls.push(original);
+        }
     }
 
     if (urls.length === 0) throw new Error('No images found on board');
