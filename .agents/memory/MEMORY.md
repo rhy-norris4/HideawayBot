@@ -1,1 +1,2 @@
 - [Music streaming fix](music-streaming-fix.md) — play-dl stream() broken by YouTube; replaced with yt-dlp --get-url + ffmpeg PCM pipe; tweetnacl required for voice encryption.
+- [Imported repo stray artifacts](imported-repo-stray-artifacts.md) — imported JS files can contain leftover non-JS markers (e.g. `---`/`#` frontmatter) that silently break module loading; check with `node --check` across `src` when startup logs show unexplained syntax errors.

@@ -1,8 +1,6 @@
----
-# Debug: command loading diagnostics
-# This is a tiny helper file that will log command load failures and counts during startup.
-# It won't change behavior except to add clearer logs.
----
+// Debug: command loading diagnostics
+// This is a tiny helper file that will log command load failures and counts during startup.
+// It won't change behavior except to add clearer logs.
 
 import { logger } from '../utils/logger.js';
 
