@@ -2,9 +2,10 @@
 
 ## Overview
 TitanBot is a modular Discord bot (discord.js v14) with moderation, economy,
-leveling, tickets, giveaways, birthdays, reaction roles, server stats,
-verification, and music features. It uses PostgreSQL for persistent storage
-and runs a small Express web server alongside the bot for health checks.
+leveling, tickets, giveaways, birthdays, reaction roles, and verification
+features. It uses PostgreSQL for persistent storage and runs a small Express
+web server alongside the bot for health checks. Google Groups sync, music,
+join-to-create voice channels, and server-stats counters have been removed.
 
 ## Stack
 - Node.js (ESM), discord.js v14, @discordjs/voice, @discordjs/rest
@@ -20,16 +21,19 @@ and runs a small Express web server alongside the bot for health checks.
   auto-created and migrated on startup.
 - The bot registers slash commands to the guild in `GUILD_ID` for instant
   testing (guild commands update immediately, unlike global commands).
-- Music feature is currently disabled via `features.music = false` in
-  `src/config/application.js`; the music command scaffolding and service
-  exist but are gated off.
 - Bot is confirmed online and connected to Discord + PostgreSQL as of 2026-07-14.
-- Known pre-existing bug (not fixed): the ticket escalation feature
-  (`src/interactions/buttons/ticket.js`, `ticketEscalate.js`, `ticketModals.js`,
-  and the `role-add` subcommand in `src/commands/Tickets/ticket.js`) imports
-  `escalateTicket`/`addRoleToTicket` from `src/services/ticketService.js`,
-  but that service never exports them — those specific ticket interactions
-  fail to load (logged as errors at startup) while the rest of the bot runs fine.
+- Ticket logs (close/escalate) are posted directly by the bot's own client
+  (`channel.send`), not via a webhook, so they appear as the main bot rather
+  than a separate app identity.
+- Logging is fully panel-driven: `/logging panel` lets admins assign a
+  channel per log category interactively; there is no hardcoded/automated
+  channel routing anymore.
+- The bot only replies to @mentions/replies in channel `1511829483555000350`;
+  leveling/XP and economy message handling still work in every channel.
+- Personal to-dos live under `/my todo panel` (button/select panel UI);
+  shared to-do lists moved to `/mysharedtodo`.
+- `/collect` pays out economy income based on the admin-configured
+  `/role income` role → amount mapping, on a 1-hour cooldown.
 
 ## User preferences
 None recorded yet.

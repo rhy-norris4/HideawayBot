@@ -78,8 +78,10 @@ export default {
       }
 
       if (isMentioned || isReplyToBot) {
-        const reply = getContextualReply(message, client.user);
-        await message.reply({ content: reply });
+        if (message.channel.id === '1511829483555000350') {
+          const reply = getContextualReply(message, client.user);
+          await message.reply({ content: reply });
+        }
         return;
       }
 

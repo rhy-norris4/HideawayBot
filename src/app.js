@@ -1,4 +1,4 @@
-﻿import 'dotenv/config';
+import 'dotenv/config';
 import { Client, Collection, GatewayIntentBits } from 'discord.js';
 import { REST } from '@discordjs/rest';
 import express from 'express';
@@ -7,11 +7,9 @@ import cron from 'node-cron';
 import config from './config/application.js';
 import { initializeDatabase, setInDb } from './utils/database.js';
 import { getGuildConfig } from './services/guildConfig.js';
-import { getServerCounters, saveServerCounters, updateCounter } from './services/serverstatsService.js';
 import { logger, startupLog, shutdownLog } from './utils/logger.js';
 import { checkBirthdays } from './services/birthdayService.js';
 import { checkGiveaways } from './services/giveawayService.js';
-import { syncAllGoogleGroups } from './services/googleGroupsService.js';
 import { loadCommands, registerCommands as registerSlashCommands } from './handlers/commandLoader.js';
 
 class TitanBot extends Client {
@@ -236,44 +234,6 @@ class TitanBot extends Client {
   setupCronJobs() {
     cron.schedule('0 6 * * *', () => checkBirthdays(this));
     cron.schedule('* * * * *', () => checkGiveaways(this));
-    cron.schedule('*/15 * * * *', () => this.updateAllCounters());
-    cron.schedule('*/30 * * * *', () => syncAllGoogleGroups(this));
-  }
-
-  async updateAllCounters() {
-    if (!this.db) {
-      logger.warn('Database not available for counter updates');
-      return;
-    }
-    
-    for (const [guildId, guild] of this.guilds.cache) {
-      try {
-        const counters = await getServerCounters(this, guildId);
-        const validCounters = [];
-        const orphanedCounters = [];
-        
-        for (const counter of counters) {
-          if (counter && counter.type && counter.channelId && counter.enabled !== false) {
-            const channel = guild.channels.cache.get(counter.channelId);
-            if (channel) {
-              validCounters.push(counter);
-              await updateCounter(this, guild, counter);
-            } else {
-              orphanedCounters.push(counter);
-              logger.info(`Removing orphaned counter ${counter.id} (type: ${counter.type}, deleted channel: ${counter.channelId}) from guild ${guildId}`);
-            }
-          }
-        }
-        
-        // Save cleaned counters if any were orphaned
-        if (orphanedCounters.length > 0) {
-          await saveServerCounters(this, guildId, validCounters);
-          logger.info(`Cleaned up ${orphanedCounters.length} orphaned counter(s) from guild ${guildId} during scheduled update`);
-        }
-      } catch (error) {
-        logger.error(`Error updating counters for guild ${guildId}:`, error);
-      }
-    }
   }
 
   async loadHandlers() {

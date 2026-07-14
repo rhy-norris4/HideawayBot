@@ -10,7 +10,6 @@ import { logger } from '../../utils/logger.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { getModerationCases } from '../../utils/moderation.js';
 import { getFromDb, setInDb } from '../../utils/database.js';
-import { getUserGoogleEmail, getMappings } from '../../services/googleGroupsService.js';
 
 const LEVEL_PREFIX = {
     Moderation: 'MOD',
@@ -93,12 +92,10 @@ async function handleVettingCheck(interaction, client) {
 
     const now = Date.now();
 
-    const [cases, notes, rankHistory, googleEmail, googleMappings] = await Promise.all([
+    const [cases, notes, rankHistory] = await Promise.all([
         getModerationCases(guild.id, { userId: targetUser.id, limit: 100 }),
         getFromDb(`moderation_user_notes_${guild.id}_${targetUser.id}`, []),
         getFromDb(`rank_history_${guild.id}_${targetUser.id}`, []),
-        getUserGoogleEmail(targetUser.id),
-        getMappings(guild.id),
     ]);
 
     const activeSanctionsText = cases.length > 0
@@ -129,23 +126,6 @@ async function handleVettingCheck(interaction, client) {
             return `- ${content} — Added by <@${n.authorId || 'Unknown'}>\n  -- ${label}`;
           }).join('\n')
         : '- No internal notes';
-
-    const linkedEmail = googleEmail || null;
-
-    let googleGroupsText;
-    if (!googleMappings.length) {
-        googleGroupsText = `- Account Linked? ${linkedEmail ? `✅ \`${linkedEmail}\`` : '❌'}\n• No Google Groups configured — use \`/googlegroups map\` to set up mappings`;
-    } else {
-        const groupLines = googleMappings.map(m => {
-            const name = m.groupName && m.groupName !== m.groupEmail ? m.groupName : m.groupEmail;
-            const hasRole = member?.roles?.cache?.has(m.roleId) ?? false;
-            return `• ${hasRole ? '✅' : '❌'} **${name}** — \`${m.groupEmail}\``;
-        });
-        googleGroupsText = [
-            `- Account Linked? ${linkedEmail ? `✅ \`${linkedEmail}\`` : '❌'}`,
-            ...groupLines,
-        ].join('\n');
-    }
 
     const joinDate = member?.joinedAt
         ? `<t:${Math.floor(member.joinedAt.getTime() / 1000)}:F>`
@@ -199,10 +179,6 @@ async function handleVettingCheck(interaction, client) {
             {
                 name: '🥇 Rank Changes',
                 value: rankChangesText
-            },
-            {
-                name: '📋 Google Groups',
-                value: googleGroupsText
             },
             {
                 name: '🗒️ Internal Notes',

@@ -16,6 +16,7 @@ const GUILD_CONFIG_DEFAULTS = {
     logging: {
         enabled: false,
         channelId: null,
+        categoryChannels: {},
         enabledEvents: {}
     }
 };

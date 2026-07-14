@@ -12,9 +12,10 @@ export const LoggingConfigSchema = z
   .object({
     enabled: z.boolean().default(false),
     channelId: z.string().nullable().optional(),
+    categoryChannels: z.record(z.string()).default({}),
     enabledEvents: z.record(z.boolean()).default({})
   })
-  .default({ enabled: false, enabledEvents: {} });
+  .default({ enabled: false, categoryChannels: {}, enabledEvents: {} });
 
 const TicketLoggingSchema = z
   .object({

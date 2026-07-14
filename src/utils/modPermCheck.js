@@ -31,7 +31,7 @@ export function checkModPermission(member, commandName, subcommandName = null) {
 
   if (member.roles.cache.some(r => TIER1_ROLES.includes(r.id))) {
     if (TIER1_COMMANDS.has(commandName)) return { allowed: true };
-    if (commandName === 'usernotes' && subcommandName === 'add') return { allowed: true };
+    if (commandName === 'internalnotes' && subcommandName === 'add') return { allowed: true };
     return { allowed: false, message: '❌ You do not have permission to use this moderation command.' };
   }
 

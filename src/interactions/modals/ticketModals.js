@@ -1,5 +1,4 @@
 import {
-    EmbedBuilder,
     MessageFlags
 } from 'discord.js';
 import { getTicketData, escalateTicket, ESCALATION_LEVELS } from '../../services/ticketService.js';
@@ -32,18 +31,15 @@ export default [
 
                 await escalateTicket(interaction.client, interaction.guild, interaction.channel, ticket, escalationLevel, reason, interaction.user);
 
-                const embed = new EmbedBuilder()
-                    .setColor(escalationConfig.color)
-                    .setTitle(`⬆️ Ticket Escalated to ${escalationConfig.label}`)
-                    .setDescription(
-                        `**Escalated by:** ${interaction.user.tag}\n` +
-                        `**Level:** ${escalationConfig.label}\n` +
-                        `**Reason:** ${reason}`
-                    )
-                    .setTimestamp();
-
                 const pingRole = `<@&${escalationConfig.roleId}>`;
-                await interaction.reply({ content: pingRole, embeds: [embed] });
+                await interaction.reply({
+                    content:
+                        `${pingRole}\n` +
+                        `⬆️ **Ticket Escalated to ${escalationConfig.label}**\n` +
+                        `Escalated by: ${interaction.user.tag}\n` +
+                        `Level: ${escalationConfig.label}\n` +
+                        `Reason: ${reason}`
+                });
 
                 logger.info(`[Tickets] Ticket #${ticket.num} escalated to ${escalationConfig.label} by ${interaction.user.tag}`);
             } catch (err) {

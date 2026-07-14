@@ -87,7 +87,6 @@ const appConfig = {
 
     verification: true,             
     reactionRoles: true,            
-    joinToCreate: true,             
 
     voice: true,                    
     search: true,                   
@@ -95,8 +94,6 @@ const appConfig = {
     utility: true,                  
     community: true,                
     fun: true,                      
-
-    music: false,                   
   },
 
   env: process.env.NODE_ENV || "development",

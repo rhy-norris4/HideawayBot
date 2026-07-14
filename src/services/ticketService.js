@@ -125,20 +125,6 @@ export async function clearActiveTicket(guildId, userId, type) {
     await setInDb(activeKey(guildId, userId, type), null);
 }
 
-async function getOrCreateWebhook(client, guild, channelId) {
-    const channel = guild.channels.cache.get(channelId)
-        || await guild.channels.fetch(channelId).catch(() => null);
-    if (!channel?.isTextBased?.()) return null;
-
-    const webhooks = await channel.fetchWebhooks().catch(() => null);
-    const existing = webhooks?.find(w => w.owner?.id === client.user.id && w.name === 'TitanBot Tickets');
-    if (existing) return existing;
-
-    return channel.createWebhook({
-        name: 'TitanBot Tickets',
-        avatar: client.user.displayAvatarURL()
-    }).catch(() => null);
-}
 
 export async function createTicketChannel(client, guild, user, type, fields) {
     const config = TICKET_TYPES[type];
@@ -297,12 +283,6 @@ async function sendOpenLog(client, guild, type, user, ticketData, channel, ticke
             embed.addFields({ name: label, value: value.slice(0, 1024) });
         }
 
-        const webhook = await getOrCreateWebhook(client, guild, TICKET_LOG_CHANNEL);
-        if (webhook) {
-            await webhook.send({ embeds: [embed] });
-            return;
-        }
-
         const logChannel = guild.channels.cache.get(TICKET_LOG_CHANNEL)
             || await guild.channels.fetch(TICKET_LOG_CHANNEL).catch(() => null);
         if (logChannel) await logChannel.send({ embeds: [embed] });
@@ -412,17 +392,11 @@ export async function closeTicket(client, guild, channel, closedBy, reason = 'No
         // Try to upload transcript to log channel and capture a URL
         let transcriptUrl = null;
         try {
-            const webhook = await getOrCreateWebhook(client, guild, TICKET_LOG_CHANNEL);
-            if (webhook) {
-                const msg = await webhook.send({ content: `Transcript for ${channel.name}`, files: [file] });
+            const logChannel = guild.channels.cache.get(TICKET_LOG_CHANNEL)
+                || await guild.channels.fetch(TICKET_LOG_CHANNEL).catch(() => null);
+            if (logChannel) {
+                const msg = await logChannel.send({ content: `Transcript for ${channel.name}`, files: [file] }).catch(() => null);
                 if (msg) transcriptUrl = (msg.attachments?.first()?.url) || msg.url || null;
-            } else {
-                const logChannel = guild.channels.cache.get(TICKET_LOG_CHANNEL)
-                    || await guild.channels.fetch(TICKET_LOG_CHANNEL).catch(() => null);
-                if (logChannel) {
-                    const msg = await logChannel.send({ content: `Transcript for ${channel.name}`, files: [file] }).catch(() => null);
-                    if (msg) transcriptUrl = (msg.attachments?.first()?.url) || msg.url || null;
-                }
             }
         } catch (err) {
             logger.warn('[Tickets] Failed to upload transcript to log channel:', err?.message || err);
@@ -466,16 +440,11 @@ export async function closeTicket(client, guild, channel, closedBy, reason = 'No
             logger.warn('[Tickets] DM send error:', err?.message || err);
         }
 
-        // Send close embed to log channel (via webhook if available)
+        // Send close embed to log channel directly
         try {
-            const webhook = await getOrCreateWebhook(client, guild, TICKET_LOG_CHANNEL);
-            if (webhook) {
-                await webhook.send({ embeds: [closeEmbed] });
-            } else {
-                const logChannel = guild.channels.cache.get(TICKET_LOG_CHANNEL)
-                    || await guild.channels.fetch(TICKET_LOG_CHANNEL).catch(() => null);
-                if (logChannel) await logChannel.send({ embeds: [closeEmbed] });
-            }
+            const logChannel = guild.channels.cache.get(TICKET_LOG_CHANNEL)
+                || await guild.channels.fetch(TICKET_LOG_CHANNEL).catch(() => null);
+            if (logChannel) await logChannel.send({ embeds: [closeEmbed] });
         } catch (err) {
             logger.warn('[Tickets] Failed to post close embed to log channel:', err?.message || err);
         }
@@ -494,6 +463,24 @@ export async function escalateTicket(client, guild, channel, ticket, escalationL
     const escalationConfig = ESCALATION_LEVELS[escalationLevel];
     if (!escalationConfig) throw new Error(`Unknown escalation level: ${escalationLevel}`);
 
+    // Step 1: Move channel to the new category and sync its permissions to the category
+    if (escalationConfig.categoryId) {
+        await channel.setParent(escalationConfig.categoryId, { lockPermissions: true }).catch(err => {
+            logger.warn('[Tickets] Failed to move ticket to escalation category:', err?.message || err);
+        });
+    }
+
+    // Step 2: After category sync, explicitly re-apply overwrites so they are never lost
+
+    // Re-apply ticket opener access
+    await channel.permissionOverwrites.edit(ticket.userId, {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true,
+        AttachFiles: true
+    }).catch(err => logger.warn('[Tickets] Failed to re-grant opener access after escalation:', err?.message || err));
+
+    // Re-apply escalation role access
     await channel.permissionOverwrites.edit(escalationConfig.roleId, {
         ViewChannel: true,
         SendMessages: true,
@@ -501,10 +488,24 @@ export async function escalateTicket(client, guild, channel, ticket, escalationL
         AttachFiles: true
     }).catch(err => logger.warn('[Tickets] Failed to grant escalation role access:', err?.message || err));
 
-    if (escalationConfig.categoryId) {
-        await channel.setParent(escalationConfig.categoryId, { lockPermissions: false }).catch(err => {
-            logger.warn('[Tickets] Failed to move ticket to escalation category:', err?.message || err);
-        });
+    // Re-apply any users added to the ticket before escalation
+    for (const userId of (ticket.addedUsers || [])) {
+        await channel.permissionOverwrites.edit(userId, {
+            ViewChannel: true,
+            SendMessages: true,
+            ReadMessageHistory: true,
+            AttachFiles: true
+        }).catch(err => logger.warn(`[Tickets] Failed to re-grant added user ${userId} access after escalation:`, err?.message || err));
+    }
+
+    // Re-apply any roles added to the ticket before escalation
+    for (const roleId of (ticket.addedRoles || [])) {
+        await channel.permissionOverwrites.edit(roleId, {
+            ViewChannel: true,
+            SendMessages: true,
+            ReadMessageHistory: true,
+            AttachFiles: true
+        }).catch(err => logger.warn(`[Tickets] Failed to re-grant added role ${roleId} access after escalation:`, err?.message || err));
     }
 
     const updated = await updateTicketData(guild.id, channel.id, {
@@ -515,25 +516,19 @@ export async function escalateTicket(client, guild, channel, ticket, escalationL
         escalatedAt: Date.now()
     });
 
+    // Step 3: Log escalation as plain text directly via the bot (no webhook)
     try {
-        const webhook = await getOrCreateWebhook(client, guild, TICKET_LOG_CHANNEL);
-        const embed = new EmbedBuilder()
-            .setColor(escalationConfig.color)
-            .setTitle(`⬆️ Ticket Escalated — #${ticket.num}`)
-            .setDescription(
-                `**Channel:** ${channel}\n` +
-                `**Escalated by:** ${escalatedByUser.tag || escalatedByUser.id}\n` +
-                `**Level:** ${escalationConfig.label}\n` +
-                `**Reason:** ${reason}`
-            )
-            .setTimestamp();
-
-        if (webhook) {
-            await webhook.send({ embeds: [embed] });
-        } else {
-            const logChannel = guild.channels.cache.get(TICKET_LOG_CHANNEL)
-                || await guild.channels.fetch(TICKET_LOG_CHANNEL).catch(() => null);
-            if (logChannel) await logChannel.send({ embeds: [embed] });
+        const logChannel = guild.channels.cache.get(TICKET_LOG_CHANNEL)
+            || await guild.channels.fetch(TICKET_LOG_CHANNEL).catch(() => null);
+        if (logChannel) {
+            await logChannel.send({
+                content:
+                    `⬆️ **Ticket Escalated — #${ticket.num}**\n` +
+                    `Channel: ${channel}\n` +
+                    `Escalated by: ${escalatedByUser.tag || escalatedByUser.id}\n` +
+                    `Level: ${escalationConfig.label}\n` +
+                    `Reason: ${reason}`
+            });
         }
     } catch (err) {
         logger.warn('[Tickets] Failed to log escalation:', err?.message || err);

@@ -20,7 +20,7 @@ function parseEnvList() {
 
 export default {
   data: new SlashCommandBuilder()
-    .setName('landonorris')
+    .setName('ln4')
     .setDescription('Sends a Lando Norris image 🧡 (curated list; Pinterest scraping disabled)'),
   category: 'Fun',
 
@@ -50,7 +50,7 @@ export default {
           .setTitle('🧡 Lando Norris — Images Disabled')
           .setDescription(
             'Image delivery is disabled because no curated image list is configured.\n' +
-            'An admin can add images using `/landonorris-manage add <url>`. Alternatively set the environment variable `LANDO_IMAGES` to a comma-separated list of HTTPS image URLs.'
+            'An admin can add images using `/ln4-manage add <url>`. Alternatively set the environment variable `LANDO_IMAGES` to a comma-separated list of HTTPS image URLs.'
           )
           .setTimestamp();
 

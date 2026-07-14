@@ -7,17 +7,10 @@ import { sanitizeInput } from '../../utils/sanitization.js';
 
 
 
-
-
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 function getUserNotesKey(guildId, userId) {
     return `moderation_user_notes_${guildId}_${userId}`;
 }
-
-
-
-
-
 
 function getGuildNotesListKey(guildId) {
     return `moderation_user_notes_list_${guildId}`;
@@ -25,8 +18,8 @@ function getGuildNotesListKey(guildId) {
 
 export default {
     data: new SlashCommandBuilder()
-        .setName("usernotes")
-        .setDescription("Manage user notes for moderation purposes")
+        .setName("internalnotes")
+        .setDescription("Manage internal notes for a user")
         .addSubcommand(subcommand =>
             subcommand
                 .setName("add")
@@ -105,7 +98,7 @@ export default {
                 embeds: [
                     errorEmbed(
                         "Permission Denied",
-                        "You do not have permission to manage user notes."
+                        "You do not have permission to manage internal notes."
                     ),
                 ],
             });
@@ -153,7 +146,7 @@ export default {
                     });
             }
         } catch (error) {
-            logger.error(`Error in usernotes command (${subcommand}):`, error);
+            logger.error(`Error in internalnotes command (${subcommand}):`, error);
             return InteractionHelper.safeReply(interaction, {
                 embeds: [
                     errorEmbed(
@@ -231,7 +224,7 @@ async function handleViewNotes(interaction, targetUser, notes) {
             embeds: [
                 infoEmbed(
                     "📝 No Notes",
-                    `There are no notes for **${targetUser.tag}**.`
+                    `There are no internal notes for **${targetUser.tag}**.`
                 ),
             ],
         });
@@ -239,7 +232,7 @@ async function handleViewNotes(interaction, targetUser, notes) {
 
     const sortedNotes = [...notes].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-    let description = `**Notes for ${targetUser.tag} (${targetUser.id}):**\n\n`;
+    let description = `**Internal Notes for ${targetUser.tag} (${targetUser.id}):**\n\n`;
     
     sortedNotes.forEach((note, index) => {
         const typeInfo = getNoteTypeInfo(note.type);
@@ -256,7 +249,7 @@ async function handleViewNotes(interaction, targetUser, notes) {
     return InteractionHelper.safeReply(interaction, {
         embeds: [
             infoEmbed(
-                `📝 User Notes (${notes.length})`,
+                `📝 Internal Notes (${notes.length})`,
                 description
             )
         ]
@@ -305,7 +298,7 @@ async function handleClearNotes(interaction, targetUser, notes, guildId) {
             embeds: [
                 infoEmbed(
                     "No Notes to Clear",
-                    `There are no notes for **${targetUser.tag}** to clear.`
+                    `There are no internal notes for **${targetUser.tag}** to clear.`
                 ),
             ],
         });
@@ -320,7 +313,7 @@ async function handleClearNotes(interaction, targetUser, notes, guildId) {
         embeds: [
             successEmbed(
                 "🗑️ Notes Cleared",
-                `Cleared **${noteCount}** notes from **${targetUser.tag}**.`
+                `Cleared **${noteCount}** internal notes from **${targetUser.tag}**.`
             )
         ]
     });
@@ -336,8 +329,3 @@ function getNoteTypeInfo(type) {
     
     return types[type] || types.neutral;
 }
-
-
-
-
-

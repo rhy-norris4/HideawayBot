@@ -1,9 +1,6 @@
 import { EmbedBuilder, ChannelType } from 'discord.js';
 import { getGuildConfig } from './guildConfig.js';
 import { logger } from '../utils/logger.js';
-import { LOG_CHANNELS } from '../config/logChannels.js';
-
-
 
 
 
@@ -64,7 +61,12 @@ const EVENT_TYPES = {
   VOICE_MOVE: 'voice.move',
 
   MEMBER_ROLE_ADD: 'role.memberadd',
-  MEMBER_ROLE_REMOVE: 'role.memberremove'
+  MEMBER_ROLE_REMOVE: 'role.memberremove',
+
+  // Channel events
+  CHANNEL_CREATE: 'channel.create',
+  CHANNEL_DELETE: 'channel.delete',
+  CHANNEL_PERMISSIONS_UPDATE: 'channel.permissions',
 };
 
 const EVENT_COLORS = {
@@ -105,6 +107,9 @@ const EVENT_COLORS = {
   'voice.move': 0x3498db,
   'role.memberadd': 0x2ecc71,
   'role.memberremove': 0xe74c3c,
+  'channel.create': 0x2ecc71,
+  'channel.delete': 0xe74c3c,
+  'channel.permissions': 0xFFA500,
 };
 
 const EVENT_ICONS = {
@@ -145,14 +150,10 @@ const EVENT_ICONS = {
   'voice.move': '🔀',
   'role.memberadd': '➕',
   'role.memberremove': '➖',
+  'channel.create': '📢',
+  'channel.delete': '🗑️',
+  'channel.permissions': '🔐',
 };
-
-
-
-
-
-
-
 
 
 
@@ -175,7 +176,7 @@ export async function logEvent({
 
     const config = await getGuildConfig(client, guildId);
 
-    
+    // Check ignore lists
     const ignoredUsers = config.logIgnore?.users || [];
     const ignoredChannels = config.logIgnore?.channels || [];
     if (data?.userId && ignoredUsers.includes(data.userId)) {
@@ -185,20 +186,14 @@ export async function logEvent({
       return;
     }
 
-    const category = eventType.split('.')[0];
-    const hardcodedChannelId = LOG_CHANNELS[category];
+    // All routing now comes from guild config only
+    if (!isLoggingEnabled(config, eventType)) {
+      return;
+    }
 
-    let logChannelId;
-    if (hardcodedChannelId) {
-      logChannelId = hardcodedChannelId;
-    } else {
-      if (!isLoggingEnabled(config, eventType)) {
-        return;
-      }
-      logChannelId = getLogChannelForEvent(config, eventType);
-      if (!logChannelId) {
-        return;
-      }
+    const logChannelId = getLogChannelForEvent(config, eventType);
+    if (!logChannelId) {
+      return;
     }
 
     const channel = guild.channels.cache.get(logChannelId) || 
@@ -232,10 +227,6 @@ export async function logEvent({
 
 
 
-
-
-
-
 function isLoggingEnabled(config, eventType) {
   if (config.enableLogging === false) {
     return false;
@@ -253,12 +244,12 @@ function isLoggingEnabled(config, eventType) {
   const category = eventType.split('.')[0];
   const enabledEvents = config.logging.enabledEvents || {};
 
-  
+  // Explicit event disable check
   if (enabledEvents[eventType] === false) {
     return false;
   }
 
-  
+  // Category wildcard disable check
   if (enabledEvents[`${category}.*`] === false) {
     return false;
   }
@@ -267,32 +258,27 @@ function isLoggingEnabled(config, eventType) {
 }
 
 
-
-
-
-
-
 function getLogChannelForEvent(config, eventType) {
   const logging = config.logging || {};
-  
-  
+  const category = eventType.split('.')[0];
+
+  // Per-category channel takes priority
+  if (logging.categoryChannels && logging.categoryChannels[category]) {
+    return logging.categoryChannels[category];
+  }
+
+  // Fall back to legacy single channelId if present (backward compat)
   if (logging.channelId) {
     return logging.channelId;
   }
 
-  
+  // Also check top-level logChannelId for very old data
   if (config.logChannelId) {
     return config.logChannelId;
   }
 
   return null;
 }
-
-
-
-
-
-
 
 
 function createLogEmbed(guild, eventType, data) {
@@ -307,16 +293,13 @@ function createLogEmbed(guild, eventType, data) {
     iconURL: guild.iconURL()
   });
 
-  
   const title = data.title || `${icon} ${formatEventType(eventType)}`;
   embed.setTitle(title);
 
-  
   if (data.description) {
     embed.setDescription(data.description);
   }
 
-  
   if (data.fields && Array.isArray(data.fields)) {
     embed.addFields(data.fields);
   }
@@ -327,10 +310,6 @@ function createLogEmbed(guild, eventType, data) {
 
   return embed;
 }
-
-
-
-
 
 
 function formatEventType(eventType) {
@@ -345,11 +324,6 @@ function formatEventType(eventType) {
 }
 
 
-
-
-
-
-
 export async function getLoggingStatus(client, guildId) {
   const config = await getGuildConfig(client, guildId);
   const logging = config.logging || {};
@@ -357,17 +331,11 @@ export async function getLoggingStatus(client, guildId) {
   return {
     enabled: logging.enabled || false,
     channelId: logging.channelId || null,
+    categoryChannels: logging.categoryChannels || {},
     enabledEvents: logging.enabledEvents || {},
     allEventTypes: EVENT_TYPES
   };
 }
-
-
-
-
-
-
-
 
 
 export async function toggleEventLogging(client, guildId, eventTypes, enabled) {
@@ -375,7 +343,7 @@ export async function toggleEventLogging(client, guildId, eventTypes, enabled) {
     const { updateGuildConfig } = await import('./guildConfig.js');
     const config = await getGuildConfig(client, guildId);
     
-    const logging = config.logging || { enabled: false, enabledEvents: {} };
+    const logging = config.logging || { enabled: false, categoryChannels: {}, enabledEvents: {} };
     const types = Array.isArray(eventTypes) ? eventTypes : [eventTypes];
     
     types.forEach(type => {
@@ -402,18 +370,12 @@ export async function toggleEventLogging(client, guildId, eventTypes, enabled) {
 }
 
 
-
-
-
-
-
-
 export async function setLoggingChannel(client, guildId, channelId) {
   try {
     const { updateGuildConfig } = await import('./guildConfig.js');
     const config = await getGuildConfig(client, guildId);
     
-    const logging = config.logging || { enabled: false, enabledEvents: {} };
+    const logging = config.logging || { enabled: false, categoryChannels: {}, enabledEvents: {} };
     logging.channelId = channelId;
     logging.enabled = true;
 
@@ -426,10 +388,25 @@ export async function setLoggingChannel(client, guildId, channelId) {
 }
 
 
+export async function setLoggingCategoryChannel(client, guildId, category, channelId) {
+  try {
+    const { updateGuildConfig } = await import('./guildConfig.js');
+    const config = await getGuildConfig(client, guildId);
 
+    const logging = config.logging || { enabled: false, categoryChannels: {}, enabledEvents: {} };
+    if (!logging.categoryChannels) {
+      logging.categoryChannels = {};
+    }
+    logging.categoryChannels[category] = channelId;
+    logging.enabled = true;
 
-
-
+    await updateGuildConfig(client, guildId, { logging });
+    return true;
+  } catch (error) {
+    logger.error('Error setting logging category channel:', error);
+    return false;
+  }
+}
 
 
 export async function setLoggingEnabled(client, guildId, enabled) {
@@ -437,7 +414,7 @@ export async function setLoggingEnabled(client, guildId, enabled) {
     const { updateGuildConfig } = await import('./guildConfig.js');
     const config = await getGuildConfig(client, guildId);
     
-    const logging = config.logging || { enabledEvents: {} };
+    const logging = config.logging || { categoryChannels: {}, enabledEvents: {} };
     logging.enabled = enabled;
 
     await updateGuildConfig(client, guildId, { logging });

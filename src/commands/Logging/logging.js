@@ -1,11 +1,69 @@
-import { SlashCommandBuilder, PermissionFlagsBits, ChannelType } from 'discord.js';
-import { errorEmbed } from '../../utils/embeds.js';
+import {
+    SlashCommandBuilder,
+    PermissionFlagsBits,
+    StringSelectMenuBuilder,
+    ActionRowBuilder,
+    EmbedBuilder,
+} from 'discord.js';
+import { getGuildConfig } from '../../services/guildConfig.js';
 import { logger } from '../../utils/logger.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { getColor } from '../../config/bot.js';
 
-import dashboard from './modules/logging_dashboard.js';
-import setchannel from './modules/logging_setchannel.js';
-import filter from './modules/logging_filter.js';
+export const LOG_CATEGORIES = [
+    { value: 'moderation',   label: '🔨 Moderation',     description: 'Bans, kicks, mutes, warns, purges' },
+    { value: 'ticket',       label: '🎫 Tickets',         description: 'Ticket create, close, claim, delete' },
+    { value: 'message',      label: '✉️ Messages',        description: 'Message delete, edit, bulk delete' },
+    { value: 'role',         label: '🏷️ Roles',           description: 'Role create, delete, update, member changes' },
+    { value: 'member',       label: '👥 Members',         description: 'Member join, leave, name changes' },
+    { value: 'reactionrole', label: '🎭 Reaction Roles',  description: 'Reaction role add, remove, create, delete' },
+    { value: 'giveaway',     label: '🎁 Giveaways',       description: 'Giveaway create, winner, reroll, delete' },
+    { value: 'voice',        label: '🎙️ Voice',           description: 'Voice join, leave, move, status' },
+    { value: 'channel',      label: '📢 Channels',        description: 'Channel create, delete, permission changes' },
+];
+
+export async function buildPanelMessage(client, guildId, guild) {
+    const config = await getGuildConfig(client, guildId);
+    const categoryChannels = config.logging?.categoryChannels || {};
+    const loggingEnabled = config.logging?.enabled || false;
+
+    const options = LOG_CATEGORIES.map(cat => {
+        const chanId = categoryChannels[cat.value];
+        let desc = cat.description;
+        if (chanId) {
+            const ch = guild.channels.cache.get(chanId);
+            desc = ch ? `Currently: #${ch.name}` : `Currently: ID ${chanId}`;
+        } else {
+            desc = 'Currently: not set';
+        }
+        return {
+            label: cat.label,
+            value: cat.value,
+            description: desc,
+        };
+    });
+
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId('logging_panel_category')
+        .setPlaceholder('Select a category to configure its log channel…')
+        .addOptions(options);
+
+    const row = new ActionRowBuilder().addComponents(selectMenu);
+
+    const configuredCount = Object.keys(categoryChannels).length;
+    const embed = new EmbedBuilder()
+        .setTitle('📋 Logging Panel')
+        .setDescription(
+            `Configure which channel each event category logs to.\n\n` +
+            `**Status:** ${loggingEnabled ? '✅ Enabled' : '❌ Disabled'}\n` +
+            `**Categories configured:** ${configuredCount} / ${LOG_CATEGORIES.length}\n\n` +
+            `Select a category below to pick its log channel.`
+        )
+        .setColor(loggingEnabled ? getColor('success') : getColor('warning'))
+        .setTimestamp();
+
+    return { embeds: [embed], components: [row], ephemeral: true };
+}
 
 export default {
     data: new SlashCommandBuilder()
@@ -13,105 +71,21 @@ export default {
         .setDescription('Manage audit logging for this server.')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .setDMPermission(false)
-        .addSubcommand((subcommand) =>
-            subcommand
-                .setName('dashboard')
-                .setDescription('Open the interactive logging dashboard — view status and toggle event categories.'),
-        )
-        .addSubcommand((subcommand) =>
-            subcommand
-                .setName('setchannel')
-                .setDescription('Set the audit log channel for this server.')
-                .addChannelOption((option) =>
-                    option
-                        .setName('channel')
-                        .setDescription('The text channel for audit logs.')
-                        .addChannelTypes(ChannelType.GuildText)
-                        .setRequired(false),
-                )
-                .addBooleanOption((option) =>
-                    option
-                        .setName('disable')
-                        .setDescription('Set to True to disable audit logging entirely.')
-                        .setRequired(false),
-                ),
-        )
-        .addSubcommandGroup((group) =>
-            group
-                .setName('filter')
-                .setDescription('Manage the log ignore list (users and channels to skip).')
-                .addSubcommand((subcommand) =>
-                    subcommand
-                        .setName('add')
-                        .setDescription('Add a user or channel to the log ignore list.')
-                        .addStringOption((option) =>
-                            option
-                                .setName('type')
-                                .setDescription('Whether to ignore a user or channel.')
-                                .setRequired(true)
-                                .addChoices(
-                                    { name: 'User', value: 'user' },
-                                    { name: 'Channel', value: 'channel' },
-                                ),
-                        )
-                        .addStringOption((option) =>
-                            option
-                                .setName('id')
-                                .setDescription('The ID of the user or channel to ignore.')
-                                .setRequired(true),
-                        ),
-                )
-                .addSubcommand((subcommand) =>
-                    subcommand
-                        .setName('remove')
-                        .setDescription('Remove a user or channel from the log ignore list.')
-                        .addStringOption((option) =>
-                            option
-                                .setName('type')
-                                .setDescription('Whether this is a user or channel.')
-                                .setRequired(true)
-                                .addChoices(
-                                    { name: 'User', value: 'user' },
-                                    { name: 'Channel', value: 'channel' },
-                                ),
-                        )
-                        .addStringOption((option) =>
-                            option
-                                .setName('id')
-                                .setDescription('The ID of the user or channel to remove from the ignore list.')
-                                .setRequired(true),
-                        ),
-                ),
+        .addSubcommand(sub =>
+            sub
+                .setName('panel')
+                .setDescription('Open the logging configuration panel to set per-category log channels.')
         ),
 
     async execute(interaction, config, client) {
         try {
-            // setchannel and filter both need a reply deferred before their logic runs
-            const subcommandGroup = interaction.options.getSubcommandGroup(false);
-            const subcommand = interaction.options.getSubcommand();
-
-            if (subcommand === 'dashboard') {
-                return await dashboard.execute(interaction, config, client);
-            }
-
-            await InteractionHelper.safeDefer(interaction);
-
-            if (subcommand === 'setchannel') {
-                return await setchannel.execute(interaction, config, client);
-            }
-
-            if (subcommandGroup === 'filter') {
-                return await filter.execute(interaction, config, client);
-            }
-
-            await InteractionHelper.safeEditReply(interaction, {
-                embeds: [errorEmbed('Unknown Subcommand', 'This subcommand is not recognised.')],
-            });
+            await InteractionHelper.safeDefer(interaction, { ephemeral: true });
+            const message = await buildPanelMessage(client, interaction.guildId, interaction.guild);
+            await InteractionHelper.safeEditReply(interaction, message);
         } catch (error) {
-            logger.error('logging command error:', error);
-            await InteractionHelper.safeReply(interaction, {
-                embeds: [errorEmbed('Error', 'An unexpected error occurred.')],
-                ephemeral: true,
+            logger.error('logging panel error:', error);
+            await InteractionHelper.safeEditReply(interaction, {
+                content: '❌ Failed to open the logging panel. Please try again.',
             }).catch(() => {});
         }
     },
