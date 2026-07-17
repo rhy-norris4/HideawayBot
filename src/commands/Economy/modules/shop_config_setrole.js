@@ -4,11 +4,17 @@ import { getGuildConfig, setGuildConfig } from '../../../services/guildConfig.js
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
 import { logger } from '../../../utils/logger.js';
 
+const ALLOWED_ROLES = ['1514043331267530752', '1511500077137399928'];
+
 export default {
     async execute(interaction, config, client) {
-        if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageGuild)) {
+        const hasPermission =
+            interaction.member.permissions.has(PermissionsBitField.Flags.ManageGuild) ||
+            ALLOWED_ROLES.some(id => interaction.member.roles.cache.has(id));
+
+        if (!hasPermission) {
             return InteractionHelper.safeReply(interaction, {
-                embeds: [errorEmbed('Permission Denied', 'You need **Manage Server** permissions to set the premium role.')],
+                embeds: [errorEmbed('Permission Denied', 'You need **Manage Server** permissions (or the CET Lead / Rhy role) to set the premium role.')],
                 ephemeral: true,
             });
         }
