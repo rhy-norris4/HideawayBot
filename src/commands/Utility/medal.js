@@ -39,23 +39,6 @@ async function saveDisplay(guildId, data) {
     return setInDb(DISPLAY_KEY(guildId), data);
 }
 
-async function getOrCreateWebhook(channel, client) {
-    try {
-        const webhooks = await channel.fetchWebhooks();
-        const existing = webhooks.find(
-            wh => wh.owner?.id === client.user.id && wh.name === 'Medals'
-        );
-        if (existing) return existing;
-        return await channel.createWebhook({
-            name: 'Medals',
-            avatar: client.user.displayAvatarURL()
-        });
-    } catch (err) {
-        logger.warn(`[Medal] Webhook error: ${err.message}`);
-        return null;
-    }
-}
-
 async function buildMedalEmbeds(guild, medals) {
     const medalList = Object.values(medals);
     if (medalList.length === 0) return [];
@@ -100,14 +83,6 @@ export async function refreshMedalDisplay(client, guildId) {
             || await guild.channels.fetch(display.channelId).catch(() => null);
         if (!channel || channel.type !== ChannelType.GuildText) return;
 
-        const webhook = await getOrCreateWebhook(channel, client);
-        if (!webhook) return;
-
-        if (webhook.id !== display.webhookId) {
-            display.webhookId = webhook.id;
-            display.webhookToken = webhook.token;
-        }
-
         const medalEmbeds = await buildMedalEmbeds(guild, medals);
         const updatedEmbed = new EmbedBuilder()
             .setDescription(`-# Updated <t:${Math.floor(Date.now() / 1000)}:R>`)
@@ -127,27 +102,25 @@ export async function refreshMedalDisplay(client, guildId) {
         const newIds = [];
 
         for (let i = 0; i < chunks.length; i++) {
-            const payload = {
-                username: guild.name,
-                avatarURL: guild.iconURL() || undefined,
-                embeds: chunks[i]
-            };
             if (oldIds[i]) {
                 try {
-                    await webhook.editMessage(oldIds[i], { embeds: chunks[i] });
+                    const existing = await channel.messages.fetch(oldIds[i]);
+                    await existing.edit({ embeds: chunks[i] });
                     newIds.push(oldIds[i]);
                 } catch {
-                    const msg = await webhook.send(payload);
+                    const msg = await channel.send({ embeds: chunks[i] });
                     newIds.push(msg.id);
                 }
             } else {
-                const msg = await webhook.send(payload);
+                const msg = await channel.send({ embeds: chunks[i] });
                 newIds.push(msg.id);
             }
         }
 
         for (let i = chunks.length; i < oldIds.length; i++) {
-            await webhook.deleteMessage(oldIds[i]).catch(() => {});
+            await channel.messages.fetch(oldIds[i])
+                .then(m => m.delete())
+                .catch(() => {});
         }
 
         display.messageIds = newIds;
@@ -438,17 +411,15 @@ export default {
 
                 const channel = interaction.options.getChannel('channel');
 
-                if (!channel.permissionsFor(interaction.guild.members.me).has([PermissionFlagsBits.ManageWebhooks, PermissionFlagsBits.SendMessages])) {
+                if (!channel.permissionsFor(interaction.guild.members.me).has([PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) {
                     return InteractionHelper.safeEditReply(interaction, {
-                        content: `❌ I need **Manage Webhooks** and **Send Messages** in ${channel} to post the display board.`
+                        content: `❌ I need **Send Messages** and **Embed Links** in ${channel} to post the display board.`
                     });
                 }
 
                 const display = await getDisplay(guildId);
                 display.channelId = channel.id;
                 display.messageIds = [];
-                display.webhookId = null;
-                display.webhookToken = null;
                 await saveDisplay(guildId, display);
 
                 await InteractionHelper.safeEditReply(interaction, {
