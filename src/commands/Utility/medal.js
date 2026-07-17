@@ -228,12 +228,22 @@ export default {
                 )
                 .addSubcommand(sub =>
                     sub.setName('order')
-                        .setDescription('Set the display position of a medal (1 = first)')
+                        .setDescription('Set the display position of a single medal (1 = first)')
                         .addStringOption(o =>
                             o.setName('medal').setDescription('Medal to reposition').setRequired(true).setAutocomplete(true)
                         )
                         .addIntegerOption(o =>
                             o.setName('position').setDescription('Position number (1 = first shown)').setRequired(true).setMinValue(1)
+                        )
+                )
+                .addSubcommand(sub =>
+                    sub.setName('reorder')
+                        .setDescription('Set the order of ALL medals at once — list names separated by commas')
+                        .addStringOption(o =>
+                            o.setName('list')
+                                .setDescription('Medal names in display order, comma-separated (e.g. Valor, Dedication, Leadership)')
+                                .setRequired(true)
+                                .setMaxLength(2000)
                         )
                 )
         ),
@@ -514,6 +524,64 @@ export default {
 
                 return InteractionHelper.safeEditReply(interaction, {
                     content: `✅ Medal **${name}** deleted. The display board will update momentarily.`
+                });
+            }
+
+            if (group === 'manage' && sub === 'reorder') {
+                if (!isAdmin) return deny(interaction, 'Manage Server');
+
+                const medals  = await getMedals(guildId);
+                const input   = interaction.options.getString('list');
+                const entries = input.split(',').map(s => s.trim()).filter(Boolean);
+
+                const unmatched = [];
+                const matched   = [];
+
+                for (const entry of entries) {
+                    const key = medalKey(entry);
+                    if (medals[key]) {
+                        matched.push(key);
+                    } else {
+                        unmatched.push(entry);
+                    }
+                }
+
+                if (matched.length === 0) {
+                    return InteractionHelper.safeEditReply(interaction, {
+                        content: `❌ None of the names you provided matched any medal. Use \`/medal list\` to see exact names.`
+                    });
+                }
+
+                // Assign positions in the order given
+                matched.forEach((key, i) => { medals[key].position = i + 1; });
+
+                // Any medals not in the list go after, keeping their relative order
+                const unlistedKeys = Object.keys(medals).filter(k => !matched.includes(k));
+                const unlistedSorted = unlistedKeys.sort((a, b) => {
+                    const pa = medals[a].position ?? Infinity;
+                    const pb = medals[b].position ?? Infinity;
+                    return pa !== pb ? pa - pb : (medals[a].createdAt || '').localeCompare(medals[b].createdAt || '');
+                });
+                unlistedSorted.forEach((key, i) => { medals[key].position = matched.length + i + 1; });
+
+                await saveMedals(guildId, medals);
+                refreshMedalDisplay(client, guildId).catch(() => {});
+
+                const ordered = sortedMedals(medals);
+                const listStr = ordered.map((m, i) => `${i + 1}. **${m.name}**`).join('\n');
+
+                const warnLine = unmatched.length
+                    ? `\n\n⚠️ Not recognised (placed at end): ${unmatched.map(n => `\`${n}\``).join(', ')}`
+                    : '';
+
+                return InteractionHelper.safeEditReply(interaction, {
+                    embeds: [new EmbedBuilder()
+                        .setColor(0x5865F2)
+                        .setTitle('🏅 Medal Order Updated')
+                        .setDescription(`**New display order:**\n${listStr}${warnLine}`)
+                        .setFooter({ text: 'The display board will update momentarily.' })
+                        .setTimestamp()
+                    ]
                 });
             }
 
