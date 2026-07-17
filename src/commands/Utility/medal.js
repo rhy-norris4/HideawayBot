@@ -171,6 +171,9 @@ export default {
                 .addStringOption(o =>
                     o.setName('medal').setDescription('Medal name').setRequired(true).setAutocomplete(true)
                 )
+                .addStringOption(o =>
+                    o.setName('reason').setDescription('Reason for awarding this medal').setRequired(false).setMaxLength(512)
+                )
         )
         .addSubcommand(sub =>
             sub.setName('remove')
@@ -180,6 +183,9 @@ export default {
                 )
                 .addStringOption(o =>
                     o.setName('medal').setDescription('Medal name').setRequired(true).setAutocomplete(true)
+                )
+                .addStringOption(o =>
+                    o.setName('reason').setDescription('Reason for removing this medal').setRequired(false).setMaxLength(512)
                 )
         )
         .addSubcommand(sub =>
@@ -318,7 +324,8 @@ export default {
                     return InteractionHelper.safeEditReply(interaction, { content: `⚠️ ${targetUser} already holds the **${medal.name}** medal.` });
                 }
 
-                await member.roles.add(role, `Medal "${medal.name}" awarded by ${interaction.user.tag}`);
+                const reason = interaction.options.getString('reason') || null;
+                await member.roles.add(role, `Medal "${medal.name}" awarded by ${interaction.user.tag}${reason ? `: ${reason}` : ''}`);
                 refreshMedalDisplay(client, guildId).catch(() => {});
                 logEvent({ client, guildId, eventType: EVENT_TYPES.MEDAL_AWARD, data: {
                     userId: targetUser.id,
@@ -326,6 +333,7 @@ export default {
                         { name: 'Recipient', value: `<@${targetUser.id}> \`${targetUser.tag}\``, inline: true },
                         { name: 'Medal', value: medal.name, inline: true },
                         { name: 'Awarded By', value: `<@${interaction.user.id}>`, inline: true },
+                        ...(reason ? [{ name: 'Reason', value: reason, inline: false }] : []),
                     ]
                 }}).catch(() => {});
 
@@ -358,7 +366,8 @@ export default {
                     return InteractionHelper.safeEditReply(interaction, { content: `⚠️ ${targetUser} does not hold the **${medal.name}** medal.` });
                 }
 
-                await member.roles.remove(role, `Medal "${medal.name}" removed by ${interaction.user.tag}`);
+                const reason = interaction.options.getString('reason') || null;
+                await member.roles.remove(role, `Medal "${medal.name}" removed by ${interaction.user.tag}${reason ? `: ${reason}` : ''}`);
                 refreshMedalDisplay(client, guildId).catch(() => {});
                 logEvent({ client, guildId, eventType: EVENT_TYPES.MEDAL_REMOVE, data: {
                     userId: targetUser.id,
@@ -366,6 +375,7 @@ export default {
                         { name: 'Member', value: `<@${targetUser.id}> \`${targetUser.tag}\``, inline: true },
                         { name: 'Medal', value: medal.name, inline: true },
                         { name: 'Removed By', value: `<@${interaction.user.id}>`, inline: true },
+                        ...(reason ? [{ name: 'Reason', value: reason, inline: false }] : []),
                     ]
                 }}).catch(() => {});
 

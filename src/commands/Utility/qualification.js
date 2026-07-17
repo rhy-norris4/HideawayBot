@@ -49,6 +49,9 @@ export default {
                 .addStringOption(o =>
                     o.setName('name').setDescription('Qualification name').setRequired(true)
                 )
+                .addStringOption(o =>
+                    o.setName('reason').setDescription('Reason for granting this qualification').setRequired(false).setMaxLength(512)
+                )
         )
         .addSubcommand(sub =>
             sub.setName('remove')
@@ -58,6 +61,9 @@ export default {
                 )
                 .addStringOption(o =>
                     o.setName('name').setDescription('Qualification name').setRequired(true)
+                )
+                .addStringOption(o =>
+                    o.setName('reason').setDescription('Reason for removing this qualification').setRequired(false).setMaxLength(512)
                 )
         )
         .addSubcommand(sub =>
@@ -169,13 +175,15 @@ export default {
                     });
                 }
 
-                await member.roles.add(role, `Qualification "${name}" given by ${interaction.user.tag}`);
+                const reason = interaction.options.getString('reason') || null;
+                await member.roles.add(role, `Qualification "${name}" given by ${interaction.user.tag}${reason ? `: ${reason}` : ''}`);
                 logEvent({ client, guildId, eventType: EVENT_TYPES.QUALIFICATION_GIVE, data: {
                     userId: targetUser.id,
                     fields: [
                         { name: 'Recipient', value: `<@${targetUser.id}> \`${targetUser.tag}\``, inline: true },
                         { name: 'Qualification', value: name, inline: true },
                         { name: 'Given By', value: `<@${interaction.user.id}>`, inline: true },
+                        ...(reason ? [{ name: 'Reason', value: reason, inline: false }] : []),
                     ]
                 }}).catch(() => {});
 
@@ -219,13 +227,15 @@ export default {
                     });
                 }
 
-                await member.roles.remove(role, `Qualification "${name}" removed by ${interaction.user.tag}`);
+                const reason = interaction.options.getString('reason') || null;
+                await member.roles.remove(role, `Qualification "${name}" removed by ${interaction.user.tag}${reason ? `: ${reason}` : ''}`);
                 logEvent({ client, guildId, eventType: EVENT_TYPES.QUALIFICATION_REMOVE, data: {
                     userId: targetUser.id,
                     fields: [
                         { name: 'Member', value: `<@${targetUser.id}> \`${targetUser.tag}\``, inline: true },
                         { name: 'Qualification', value: name, inline: true },
                         { name: 'Removed By', value: `<@${interaction.user.id}>`, inline: true },
+                        ...(reason ? [{ name: 'Reason', value: reason, inline: false }] : []),
                     ]
                 }}).catch(() => {});
 
