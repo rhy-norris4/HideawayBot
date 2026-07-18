@@ -283,6 +283,41 @@ const CSS = `
   }
   .lb-loading { text-align: center; padding: 48px; color: var(--muted); font-size: 14px; }
 
+  /* ── MEMBERS PAGE ── */
+  .members-search-wrap {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 24px;
+  }
+  .members-search {
+    flex: 1; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px 16px; color: var(--text);
+    font-size: 14px; font-family: inherit; outline: none;
+  }
+  .members-search:focus { border-color: var(--accent); }
+  .members-search::placeholder { color: var(--muted); }
+  .members-count { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .members-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .member-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px 18px;
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    text-decoration: none; color: inherit; transition: border-color .15s, transform .15s;
+  }
+  .member-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .member-card-av {
+    width: 64px; height: 64px; border-radius: 50%;
+    border: 2px solid var(--border); margin-bottom: 12px;
+  }
+  .member-card-name { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 4px; word-break: break-word; }
+  .member-card-level {
+    display: inline-block; font-size: 11px; font-weight: 700;
+    background: var(--accent); color: #fff; border-radius: 20px;
+    padding: 2px 10px; margin-bottom: 10px;
+  }
+  .member-card-stats { font-size: 12px; color: var(--muted); line-height: 1.7; }
+
   /* ── PROFILE PAGE ── */
   .profile-hero {
     display: flex; align-items: center; gap: 24px;
@@ -367,6 +402,7 @@ function layout(title, body, activeNav) {
     <a href="/" ${activeNav === 'home' ? 'class="active"' : ''}>Home</a>
     <a href="/medals" ${activeNav === 'medals' ? 'class="active"' : ''}>Medals</a>
     <a href="/leaderboard" ${activeNav === 'leaderboard' ? 'class="active"' : ''}>Leaderboard</a>
+    <a href="/members" ${activeNav === 'members' ? 'class="active"' : ''}>Members</a>
     <a href="https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID || ''}&permissions=8&scope=bot%20applications.commands" target="_blank" class="nav-invite">+ Invite</a>
   </div>
 </nav>
@@ -379,18 +415,7 @@ function layout(title, body, activeNav) {
 }
 
 function homePage(guild, client) {
-    const memberCount = guild?.memberCount ?? '—';
     const commandCount = 65;
-    const up = uptimeStr();
-
-    const botUser   = client?.user;
-    const botName   = botUser?.username ?? 'TitanBot';
-    const botAvatar = botUser?.avatar
-        ? `https://cdn.discordapp.com/avatars/${botUser.id}/${botUser.avatar}.png?size=128`
-        : `https://cdn.discordapp.com/embed/avatars/0.png`;
-    const rawStatus = botUser?.presence?.status ?? (client?.isReady?.() ? 'online' : 'offline');
-    const statusLabels = { online: 'Online', idle: 'Idle', dnd: 'Do Not Disturb', offline: 'Offline', invisible: 'Invisible' };
-    const statusLabel  = statusLabels[rawStatus] ?? rawStatus;
 
     const features = [
         { icon: '🛡️', name: 'Moderation', desc: 'Bans, kicks, warns, timeouts, mutes and case tracking.' },
@@ -441,14 +466,14 @@ function homePage(guild, client) {
     return layout('Home', `
 <div class="container">
   <div class="hero">
-    <div class="bot-card">
+    <div class="bot-card" id="bot-card">
       <div class="bot-av-wrap">
-        <img class="bot-av" src="${botAvatar}" alt="${botName}">
-        <div class="bot-status-dot status-${rawStatus}"></div>
+        <img class="bot-av" id="bot-av" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="TitanBot">
+        <div class="bot-status-dot status-offline" id="bot-dot"></div>
       </div>
       <div class="bot-info">
-        <div class="bot-info-name">${botName}</div>
-        <div class="bot-info-status">${statusLabel}</div>
+        <div class="bot-info-name" id="bot-name">TitanBot</div>
+        <div class="bot-info-status" id="bot-status">Connecting…</div>
       </div>
     </div>
     <h1>The bot behind<br><span>The Hideaway</span></h1>
@@ -461,7 +486,7 @@ function homePage(guild, client) {
 
   <div class="stats-row">
     <div class="stat-card">
-      <div class="stat-val">${memberCount.toLocaleString()}</div>
+      <div class="stat-val" id="stat-members">—</div>
       <div class="stat-label">Members</div>
     </div>
     <div class="stat-card">
@@ -469,7 +494,7 @@ function homePage(guild, client) {
       <div class="stat-label">Commands</div>
     </div>
     <div class="stat-card">
-      <div class="stat-val">${up}</div>
+      <div class="stat-val" id="stat-uptime">—</div>
       <div class="stat-label">Uptime</div>
     </div>
     <div class="stat-card">
@@ -483,7 +508,27 @@ function homePage(guild, client) {
 
   <div class="section-title">Popular commands</div>
   <div class="commands-grid">${cmdItems}</div>
-</div>`, 'home');
+</div>
+<script>
+  const STATUS_LABELS = { online:'Online', idle:'Idle', dnd:'Do Not Disturb', offline:'Offline', invisible:'Invisible' };
+  async function loadStatus() {
+    try {
+      const d = await fetch('/api/status').then(r => r.json());
+      const dot  = document.getElementById('bot-dot');
+      const av   = document.getElementById('bot-av');
+      const name = document.getElementById('bot-name');
+      const stat = document.getElementById('bot-status');
+      if (d.avatar) av.src = d.avatar;
+      if (d.username) { av.alt = d.username; name.textContent = d.username; }
+      dot.className = 'bot-status-dot status-' + (d.status || 'offline');
+      stat.textContent = STATUS_LABELS[d.status] ?? d.status ?? 'Unknown';
+      if (d.members != null) document.getElementById('stat-members').textContent = d.members.toLocaleString();
+      if (d.uptime)  document.getElementById('stat-uptime').textContent  = d.uptime;
+    } catch { /* keep placeholders */ }
+  }
+  loadStatus();
+  setInterval(loadStatus, 30000);
+</script>`, 'home');
 }
 
 async function medalsPage(client, db) {
@@ -698,7 +743,7 @@ async function profilePage(client, db, userId) {
     const av = avatarUrl(user);
 
     const pool = db?.db?.pool;
-    let xpRow = null, ecoRow = null;
+    let xpRow = null, ecoRow = null, xpRank = null, ecoRank = null;
     if (pool) {
         const [xpRes, ecoRes] = await Promise.all([
             pool.query(`SELECT xp, level, total_xp FROM user_levels WHERE guild_id=$1 AND user_id=$2`, [GUILD_ID, userId]).catch(() => null),
@@ -706,6 +751,22 @@ async function profilePage(client, db, userId) {
         ]);
         xpRow  = xpRes?.rows?.[0]  ?? null;
         ecoRow = ecoRes?.rows?.[0] ?? null;
+
+        if (xpRow) {
+            const rankRes = await pool.query(
+                `SELECT COUNT(*)+1 AS rank FROM user_levels WHERE guild_id=$1 AND total_xp > $2`,
+                [GUILD_ID, xpRow.total_xp]
+            ).catch(() => null);
+            xpRank = rankRes?.rows?.[0]?.rank ? Number(rankRes.rows[0].rank) : null;
+        }
+        if (ecoRow) {
+            const ecoTotal = Number(ecoRow.balance) + Number(ecoRow.bank);
+            const rankRes = await pool.query(
+                `SELECT COUNT(*)+1 AS rank FROM economy WHERE guild_id=$1 AND (balance+bank) > $2`,
+                [GUILD_ID, ecoTotal]
+            ).catch(() => null);
+            ecoRank = rankRes?.rows?.[0]?.rank ? Number(rankRes.rows[0].rank) : null;
+        }
     }
 
     const level   = xpRow ? Number(xpRow.level) : 0;
@@ -745,13 +806,17 @@ async function profilePage(client, db, userId) {
 
     return layout(`${displayName}'s Profile`, `
 <div class="container">
-  <a class="profile-back" href="/leaderboard">← Back to leaderboard</a>
+  <a class="profile-back" href="/members">← Back to members</a>
   <div class="profile-hero">
     <img class="profile-avatar" src="${av}" alt="${displayName}">
     <div>
       <div class="profile-name">${displayName}</div>
       ${user.username !== displayName ? `<div style="font-size:13px;color:var(--muted);margin-top:2px">@${user.username}</div>` : ''}
       <div class="profile-id">${userId}</div>
+      <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+        ${xpRank  ? `<span style="font-size:12px;background:var(--surface-2);border:1px solid var(--border);padding:3px 10px;border-radius:20px;color:var(--text)">⭐ XP Rank #${xpRank}</span>` : ''}
+        ${ecoRank ? `<span style="font-size:12px;background:var(--surface-2);border:1px solid var(--border);padding:3px 10px;border-radius:20px;color:var(--text)">💰 Eco Rank #${ecoRank}</span>` : ''}
+      </div>
     </div>
   </div>
   <div class="profile-grid">
@@ -803,6 +868,78 @@ async function profilePage(client, db, userId) {
     </div>
   </div>
 </div>`, '');
+}
+
+async function membersPage(client, db) {
+    const guild = client?.guilds?.cache?.get(GUILD_ID);
+    const pool  = db?.db?.pool;
+    if (!pool) return layout('Members', `<div class="container"><div class="empty-state"><div class="icon">👥</div><p>Database unavailable.</p></div></div>`, 'members');
+
+    const rows = await pool.query(
+        `SELECT ul.user_id, ul.level, ul.total_xp,
+                COALESCE(e.balance,0) AS balance, COALESCE(e.bank,0) AS bank
+         FROM user_levels ul
+         LEFT JOIN economy e ON e.user_id = ul.user_id AND e.guild_id = ul.guild_id
+         WHERE ul.guild_id = $1
+         ORDER BY ul.total_xp DESC LIMIT 100`,
+        [GUILD_ID]
+    ).catch(() => null);
+
+    if (!rows?.rows?.length) {
+        return layout('Members', `<div class="container"><div class="page-header"><h1>👥 Members</h1></div><div class="empty-state"><div class="icon">👥</div><p>No member data yet.</p></div></div>`, 'members');
+    }
+
+    const cards = rows.rows.map(row => {
+        const user   = client?.users?.cache?.get(row.user_id);
+        const member = guild?.members?.cache?.get(row.user_id);
+        const name   = member?.displayName ?? user?.username ?? `User …${row.user_id.slice(-4)}`;
+        const av     = user?.avatar
+            ? `https://cdn.discordapp.com/avatars/${row.user_id}/${user.avatar}.png?size=128`
+            : `https://cdn.discordapp.com/embed/avatars/0.png`;
+        const level  = Number(row.level);
+        const xp     = Number(row.total_xp);
+        const coins  = Number(row.balance) + Number(row.bank);
+        return `<a class="member-card" href="/profile/${row.user_id}" data-name="${name.toLowerCase()}">
+  <img class="member-card-av" src="${av}" alt="${name}" loading="lazy">
+  <div class="member-card-name">${name}</div>
+  <div class="member-card-level">Level ${level}</div>
+  <div class="member-card-stats">
+    ⭐ ${numFmt(xp)} XP<br>
+    🪙 ${numFmt(coins)} coins
+  </div>
+</a>`;
+    }).join('\n');
+
+    return layout('Members', `
+<div class="container">
+  <div class="page-header">
+    <h1>👥 Members</h1>
+    <p>Active members of The Hideaway, ranked by XP.</p>
+  </div>
+  <div class="members-search-wrap">
+    <input class="members-search" id="msearch" type="search" placeholder="Search members…" autocomplete="off">
+    <span class="members-count" id="mcount">${rows.rows.length} members</span>
+  </div>
+  <div class="members-grid" id="mgrid">
+    ${cards}
+  </div>
+</div>
+<script>
+  const search = document.getElementById('msearch');
+  const grid   = document.getElementById('mgrid');
+  const count  = document.getElementById('mcount');
+  const cards  = [...grid.querySelectorAll('.member-card')];
+  search.addEventListener('input', () => {
+    const q = search.value.toLowerCase().trim();
+    let visible = 0;
+    cards.forEach(c => {
+      const show = !q || c.dataset.name.includes(q);
+      c.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    count.textContent = visible + ' member' + (visible !== 1 ? 's' : '');
+  });
+</script>`, 'members');
 }
 
 async function getXpLeaderboard(client, db) {
@@ -867,6 +1004,33 @@ export function setupWebRoutes(app, client, db) {
     app.get('/leaderboard', (req, res) => {
         res.setHeader('Content-Type', 'text/html');
         res.send(leaderboardPage());
+    });
+
+    app.get('/api/status', (req, res) => {
+        const botUser = client?.user;
+        const guild   = client?.guilds?.cache?.get(GUILD_ID);
+        const ready   = client?.isReady?.() ?? false;
+        const rawStatus = ready ? (botUser?.presence?.status || 'online') : 'offline';
+        res.json({
+            ready,
+            status:   rawStatus,
+            username: botUser?.username ?? 'TitanBot',
+            avatar:   botUser?.avatar
+                ? `https://cdn.discordapp.com/avatars/${botUser.id}/${botUser.avatar}.png?size=128`
+                : null,
+            members:  guild?.memberCount ?? null,
+            uptime:   uptimeStr(),
+            guilds:   client?.guilds?.cache?.size ?? 0,
+        });
+    });
+
+    app.get('/members', async (req, res) => {
+        try {
+            res.setHeader('Content-Type', 'text/html');
+            res.send(await membersPage(client, db));
+        } catch (err) {
+            res.status(500).send('Error loading members page.');
+        }
     });
 
     app.get('/api/medals', async (req, res) => {

@@ -187,7 +187,7 @@ class TitanBot extends Client {
       res.send(getEmbedsPage());
     });
 
-    setupWebRoutes(app, this.client, this.db);
+    setupWebRoutes(app, this, this.db);
 
     const startServer = (port, attempt = 0) => {
       let hasStartedListening = false;
