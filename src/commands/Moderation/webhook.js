@@ -30,6 +30,11 @@ function parseDiscohookJson(raw) {
         parsed = parsed.messages[0].data;
     }
 
+    // Discohook components-v2 format: { webhookUrl, message: { components, ... } }
+    if (parsed?.message && typeof parsed.message === 'object') {
+        parsed = parsed.message;
+    }
+
     return parsed;
 }
 
@@ -151,6 +156,7 @@ export default {
                         await channel.send({
                             ...(payload.content ? { content: payload.content } : {}),
                             ...(payload.embeds?.length ? { embeds: payload.embeds } : {}),
+                            ...(payload.components?.length ? { components: payload.components } : {}),
                         });
                         initialSent = true;
                     } catch (err) {
@@ -272,6 +278,7 @@ export default {
                     const sendPayload = {
                         ...(payload.content ? { content: payload.content } : {}),
                         ...(payload.embeds?.length ? { embeds: payload.embeds } : {}),
+                        ...(payload.components?.length ? { components: payload.components } : {}),
                     };
 
                     await channel.send(sendPayload);
