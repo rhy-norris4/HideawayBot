@@ -30,11 +30,6 @@ function parseDiscohookJson(raw) {
         parsed = parsed.messages[0].data;
     }
 
-    // Validate something usable exists
-    if (!parsed.content && (!Array.isArray(parsed.embeds) || parsed.embeds.length === 0)) {
-        throw new Error('JSON must contain at least a `content` field or one embed.');
-    }
-
     return parsed;
 }
 
@@ -245,12 +240,6 @@ export default {
 
                 const jsonAttachment = interaction.options.getAttachment('json');
                 const plainContent = interaction.options.getString('content');
-
-                if (!jsonAttachment && !plainContent) {
-                    return InteractionHelper.safeEditReply(interaction, {
-                        content: '❌ Provide either a **Discohook JSON file** or a **content** message (or both).'
-                    });
-                }
 
                 const entry = webhooks[name];
                 const channel = interaction.guild.channels.cache.get(entry.channelId);
